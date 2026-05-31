@@ -2,7 +2,7 @@
 
 > Real-time monitoring of 440+ PSA oxygen plants across Rajasthan's public health facilities.
 
-[![Live Dashboard](https://img.shields.io/badge/Live%20Dashboard-Open-blue?style=for-the-badge)](https://mchaurasiya.github.io/RJ-PSA-Dashboard/)
+[![Live Dashboard](https://img.shields.io/badge/Live%20Dashboard-Open-blue?style=for-the-badge)](https://zerobug-mohit.github.io/RJ_PSA_Dashboard/)
 
 ---
 
@@ -351,7 +351,7 @@ git push -u origin main
 
 Then on GitHub: **Settings → Pages → Source: Deploy from branch → main → / (root) → Save**
 
-Your dashboard is live at: `https://<your-username>.github.io/<repo-name>/`
+Your dashboard is live at: `https://zerobug-mohit.github.io/RJ_PSA_Dashboard/`
 
 ---
 
