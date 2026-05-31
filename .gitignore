@@ -1,0 +1,26 @@
+# Source Excel files — data lives in Google Sheets
+*.xlsx
+*.xls
+
+# Old v8 source file — superseded by index.html
+psa_dashboard_v8_withAPIkeytray.html
+
+# Build utility — one-time script, not needed for hosting
+patch_dashboard.py
+
+# Internal spec document
+PSA_Dashboard_Spec_LiveSheets.md
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+derive.py
+requirements.txt
+
+# Local-only extras folder
+_extras/
+
+# OS
+.DS_Store
+Thumbs.db
