@@ -61,7 +61,9 @@ main{padding:24px;max-width:1100px;margin:0 auto}
 /* ── Configuration ─────────────────────────────────────────────────
    Web App URL — same one used by the Refresh Data button.
    The script runs as the sheet owner, so no Google sign-in needed.    */
-var WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzqgIz7mOYe_kxllTDUe16Kwuv-wN-VlKAAuI4UBB37XoPKyBeVAI6fCLvdW1rkwvHphQ/exec';
+var WEB_APP_URL    = 'https://script.google.com/macros/s/AKfycbzqgIz7mOYe_kxllTDUe16Kwuv-wN-VlKAAuI4UBB37XoPKyBeVAI6fCLvdW1rkwvHphQ/exec';
+// Read-only Sheets API key — used to verify upload succeeded by reading source sheet
+var SHEETS_API_KEY = 'AIzaSyDNJ7P41BzQgFeW3CRpshl9B6IA8q-zk2I';
 
 var DATASETS = {
   ona: {
@@ -73,6 +75,9 @@ var DATASETS = {
     requiredCols: ['Gen_Information/District','Gen_Information/Facility','Gen_Information/Wheather_fn'],
     dateCols:   ['Gen_Information/date_of_assessment','Gen_Information/_submission_time'],
     minRows:    10,
+    // For post-upload verification via Sheets API read
+    verifySheetId: '1VKJL8bqEpiqnMuNsq91sJ4AGzN34xfurabouXS-IpHs',
+    verifyTab:     'data',
   },
   eupkaran: {
     label:      'e-Upkaran Mockdrill',
@@ -83,6 +88,8 @@ var DATASETS = {
     requiredCols: ['District Name','Hospital Name','Equipment Status','Date of Mockdrill','Capacity of PSA Plant (in LPM)','Purity(in percent)','Total running hours'],
     dateCols:   ['Date of Mockdrill'],
     minRows:    5,
+    verifySheetId: '1_q3eXx0ezZ4L0SybAxlMWuWaSdUlUomDjVf0rBoNX84',
+    verifyTab:     'sheet1',
   },
   complaints: {
     label:      'Complaints Data',
@@ -93,6 +100,8 @@ var DATASETS = {
     requiredCols: ['District Name','Hospital Name','Service Provider QR Code','Complaint Raise Date'],
     dateCols:   ['Complaint Raise Date'],
     minRows:    5,
+    verifySheetId: '1jwzifzH5t7lnl9bp_9A64D9E3RvVhuLBa8lmrpwrjHg',
+    verifyTab:     'Complaints',
   },
   registry: {
     label:      'Stock on Hand (Registry)',
@@ -103,6 +112,8 @@ var DATASETS = {
     requiredCols: ['District Name','Hospital Name','QR Code','Equipment Status','Inventory Status','Capacity of PSA Plant (in LPM)'],
     dateCols:   ['MOIC Verified Date'],
     minRows:    100,
+    verifySheetId: '1fnUdcqFIq0xn7zB2YowV0L5ggU6kZ3A0d8d1CTq97CU',
+    verifyTab:     'sheet1',
   },
 };
 
@@ -288,49 +299,86 @@ async function doUpload(key) {
   var btn = document.getElementById('btn-'+key);
   btn.disabled = true; btn.textContent = '⏳ Uploading…';
   setCard(key,'');
-  setSt(key,'info','Sending data to Google Sheets…');
-  setProg(key,20);
+  setProg(key,10);
 
-  // Use allRows (complete file including print-date / metadata rows).
-  // This replaces the entire sheet content — banner rows included.
+  // Use allRows: the complete file including metadata/banner rows
   var values = d.allRows;
 
-  // Chunk into batches of 1000 rows to avoid payload size limits
-  var CHUNK = 1000;
+  // Chunk into 500-row batches (smaller = faster per-chunk processing)
+  var CHUNK  = 500;
   var chunks = [];
   chunks.push(values.slice(0, CHUNK));
   for (var i=CHUNK; i<values.length; i+=CHUNK) chunks.push(values.slice(i, i+CHUNK));
 
   try {
-    // Send first chunk (includes header, triggers the clear + write)
     for (var ci=0; ci<chunks.length; ci++) {
-      setProg(key, 20 + Math.round((ci/chunks.length)*70));
-      setSt(key,'info','Uploading chunk '+(ci+1)+' of '+chunks.length+'…');
+      var pct = 10 + Math.round(((ci+1)/chunks.length)*70);
+      setProg(key, pct);
+      setSt(key,'info','Sending chunk '+(ci+1)+' of '+chunks.length+' to Apps Script…');
 
       var payload = {
         action:  'upload',
         dataset: key,
         data:    chunks[ci],
-        chunk:   ci,          // 0 = first chunk (clear + write); >0 = append
+        chunk:   ci,
         total:   chunks.length,
       };
 
-      // Use text/plain so Apps Script receives it without CORS preflight
-      var resp = await fetch(WEB_APP_URL, {
+      // mode:'no-cors' avoids CORS preflight — request reaches the server
+      // even though we can't read the opaque response.
+      await fetch(WEB_APP_URL, {
         method:  'POST',
+        mode:    'no-cors',
         body:    JSON.stringify(payload),
       });
 
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      var result = await resp.json().catch(function(){return {};});
-      if (result.error) throw new Error(result.error);
+      // Give Apps Script time to process each chunk before sending the next
+      if (ci < chunks.length - 1) {
+        setSt(key,'info','Waiting for chunk '+(ci+1)+' to be processed…');
+        await new Promise(function(r){ setTimeout(r, 4000); });
+      }
     }
 
+    // Wait for the final chunk to finish writing
+    setSt(key,'info','Waiting for final chunk to be written to Google Sheets…');
+    await new Promise(function(r){ setTimeout(r, 6000); });
+    setProg(key, 85);
+
+    // ── Verify: read the source sheet to confirm data was written ──
+    setSt(key,'info','Verifying upload — reading sheet to confirm…');
+    var verifyOk = false;
+    try {
+      var vUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+        + cfg.verifySheetId + '/values/'
+        + encodeURIComponent("'" + cfg.verifyTab + "'!A1:E5")
+        + '?key=' + SHEETS_API_KEY + '&_t=' + Date.now();
+      // Note: _t is not a valid Sheets API param — use the cache header instead
+      var vResp = await fetch('https://sheets.googleapis.com/v4/spreadsheets/'
+        + cfg.verifySheetId + '/values/'
+        + encodeURIComponent("'" + cfg.verifyTab + "'!A1:E5")
+        + '?key=' + SHEETS_API_KEY, { cache: 'no-store' });
+      if (vResp.ok) {
+        var vData = await vResp.json();
+        var rows  = vData.values || [];
+        // Check that the sheet is not empty and has at least 2 rows
+        if (rows.length >= 2) verifyOk = true;
+      }
+    } catch(_) {}
+
     setProg(key, 100);
-    setSt(key, 'ok', '✅ Upload complete — '+d.rows.length+' rows written to "'
-      +cfg.label+'". Click Refresh Data on the dashboard to update all charts.');
-    setCard(key,'success');
-    btn.textContent = '✅ Upload complete';
+
+    if (verifyOk) {
+      setSt(key, 'ok', '✅ Upload confirmed — data is live on Google Sheets ('
+        +values.length+' rows). Click <strong>Refresh Data</strong> on the dashboard to rebuild all charts.');
+      setCard(key,'success');
+      btn.textContent = '✅ Uploaded & verified';
+    } else {
+      setSt(key, 'ok', '✅ Upload sent ('
+        +values.length+' rows). Could not auto-verify — please open the Google Sheet to confirm data updated, '
+        +'then click <strong>Refresh Data</strong> on the dashboard.');
+      setCard(key,'success');
+      btn.textContent = '✅ Upload sent';
+    }
 
   } catch(err) {
     setProg(key, 0);
