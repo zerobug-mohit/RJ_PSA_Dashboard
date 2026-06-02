@@ -696,12 +696,22 @@ function deriveDashboard() {
 
 function writeTab_(ss, tabName, headers, rows) {
   var sheet = ss.getSheetByName(tabName);
-  if (!sheet) sheet = ss.insertSheet(tabName);
-  else sheet.clearContents();
+  if (!sheet) {
+    sheet = ss.insertSheet(tabName);
+  } else {
+    sheet.clearContents();
+    sheet.clearFormats(); // remove any stale date/number formats from previous runs
+  }
 
   const data = [headers].concat(rows);
   if (data.length > 1) {
-    sheet.getRange(1, 1, data.length, headers.length).setValues(data);
+    var range = sheet.getRange(1, 1, data.length, headers.length);
+    // Force plain-text format BEFORE writing.
+    // Without this, Sheets auto-detects strings like '2026-04-17' as dates,
+    // converts them to date values, and the Sheets API returns them in locale
+    // format ('4/17/2026') instead of ISO — breaking every date in the dashboard.
+    range.setNumberFormat('@');
+    range.setValues(data);
   }
   Logger.log('  Wrote ' + rows.length + ' rows → ' + tabName);
 }

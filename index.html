@@ -630,10 +630,14 @@ var FC  = {};
 
 /* ---------- Sheets API v4 fetch ---------- */
 async function fetchTab(tab) {
+  // FORMATTED_STRING: returns all cell values as display strings.
+  // Combined with setNumberFormat('@') in Code.gs this ensures ISO date
+  // strings are returned as-is ('2026-04-17') rather than locale-converted.
   const url = 'https://sheets.googleapis.com/v4/spreadsheets/'
     + DASH_CONFIG.spreadsheetId
     + '/values/' + encodeURIComponent(tab)
-    + '?key=' + DASH_CONFIG.apiKey;
+    + '?key=' + DASH_CONFIG.apiKey
+    + '&valueRenderOption=FORMATTED_STRING';
   const resp = await fetch(url);
   if (!resp.ok) throw new Error('Sheets API error for tab "' + tab + '": HTTP ' + resp.status);
   const json = await resp.json();
@@ -643,6 +647,45 @@ async function fetchTab(tab) {
 /* Google Sheets auto-converts "true"/"false" strings to booleans.
    This helper handles both the string and boolean forms. */
 function isTruthy(v) { return v === true || String(v).toLowerCase() === 'true'; }
+
+/* Normalise any date value returned by the Sheets API to ISO YYYY-MM-DD.
+   Handles: ISO strings, US locale (M/D/YYYY), Indian/UK locale (D/M/YYYY),
+   date serial numbers (Excel/Sheets integer like 46938), and empty values. */
+function normDate_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  var s = String(v).trim();
+  if (s === '') return '';
+
+  // Already ISO — most common after Code.gs text-format fix
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  // Date serial number (number between ~40000 and 60000 = years 2009-2064)
+  var n = Number(v);
+  if (!isNaN(n) && n > 40000 && n < 60000) {
+    try {
+      return new Date((n - 25569) * 86400 * 1000).toISOString().slice(0, 10);
+    } catch(_) {}
+  }
+
+  // Locale slash formats: M/D/YYYY (US) or D/M/YYYY (India/UK)
+  var slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    var a = parseInt(slash[1], 10), b = parseInt(slash[2], 10), yr = slash[3];
+    // If first part > 12 it must be day (D/M/YYYY); else assume M/D/YYYY (US default)
+    var mo, dy;
+    if (a > 12) { dy = a; mo = b; }       // D/M/YYYY
+    else         { mo = a; dy = b; }       // M/D/YYYY (US Sheets locale)
+    return yr + '-' + String(mo).padStart(2,'0') + '-' + String(dy).padStart(2,'0');
+  }
+
+  // Fallback: let JS parse it
+  try {
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  } catch(_) {}
+
+  return s; // return as-is if all else fails
+}
 
 /* Read a headerless key-value tab (like meta) directly into an object. */
 function metaToObject(values) {
@@ -785,19 +828,19 @@ async function loadDashboard() {
         os:  r.ona_status,
         osc: r.ona_scheme,
         op:  r.ona_purity         !== '' ? +r.ona_purity         : null,
-        od:  r.ona_drill_date     || null,
+        od:  normDate_(r.ona_drill_date)  || null,
         or_: r.ona_nf_reason      || '',
         ofr: null,
         es:  r.eu_status,
         ep:  r.eu_purity          !== '' ? +r.eu_purity          : null,
         epr: r.eu_running_hours   !== '' ? +r.eu_running_hours   : null,
-        ed:  r.eu_drill_date      || null,
+        ed:  normDate_(r.eu_drill_date)   || null,
         el:  isTruthy(r.eu_leakage),
         ef:  r.eu_fire_safety,
         eq:  r.qr_suffix,
         sei: r.equipment_status,
         sii: r.inventory_status,
-        smd: r.moic_verified_date || null,
+        smd: normDate_(r.moic_verified_date) || null,
         hq:  isTruthy(r.has_qr),
         iv:  isTruthy(r.is_verified),
         re:  isTruthy(r.reporting_ever),
@@ -840,7 +883,7 @@ async function loadDashboard() {
       const c = String(r.code);
       if (!TL.history[c]) TL.history[c] = { di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
       TL.history[c].h.push({
-        d: r.date,
+        d: normDate_(r.date),
         p: r.purity !== '' ? +r.purity : null,
         s: +r.status,
       });
@@ -852,7 +895,7 @@ async function loadDashboard() {
       const c = String(r.code);
       if (!TL2.history[c]) TL2.history[c] = { di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
       TL2.history[c].h.push({
-        d: r.date,
+        d: normDate_(r.date),
         p: r.purity !== '' ? +r.purity : null,
         s: +r.status,
       });
