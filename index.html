@@ -630,14 +630,12 @@ var FC  = {};
 
 /* ---------- Sheets API v4 fetch ---------- */
 async function fetchTab(tab) {
-  // FORMATTED_STRING: returns all cell values as display strings.
-  // Combined with setNumberFormat('@') in Code.gs this ensures ISO date
-  // strings are returned as-is ('2026-04-17') rather than locale-converted.
+  // No valueRenderOption needed — Code.gs writes all cells as plain text
+  // (setNumberFormat('@')), so dates are stored and returned as ISO strings.
   const url = 'https://sheets.googleapis.com/v4/spreadsheets/'
     + DASH_CONFIG.spreadsheetId
     + '/values/' + encodeURIComponent(tab)
-    + '?key=' + DASH_CONFIG.apiKey
-    + '&valueRenderOption=FORMATTED_STRING';
+    + '?key=' + DASH_CONFIG.apiKey;
   const resp = await fetch(url);
   if (!resp.ok) throw new Error('Sheets API error for tab "' + tab + '": HTTP ' + resp.status);
   const json = await resp.json();
