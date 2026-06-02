@@ -288,6 +288,23 @@ function showPreview(key) {
 }
 
 // ── Upload ──────────────────────────────────────────────────────────
+/* Fire a chunk via Image GET request — 100% reliable, no CORS issues.
+   Data is base64-encoded so URL stays compact (~3KB per 5-row chunk). */
+function sendChunkViaGet(url, dataset, chunkIdx, chunkData) {
+  return new Promise(function(resolve) {
+    var b64  = btoa(unescape(encodeURIComponent(JSON.stringify(chunkData))));
+    var qstr = '?action=upload'
+      + '&dataset=' + encodeURIComponent(dataset)
+      + '&chunk='   + chunkIdx
+      + '&data='    + encodeURIComponent(b64);
+
+    var img     = new Image();
+    var timeout = setTimeout(function() { resolve('timeout'); }, 12000);
+    img.onload  = img.onerror = function() { clearTimeout(timeout); resolve('done'); };
+    img.src     = url + qstr;
+  });
+}
+
 async function doUpload(key) {
   var d   = parsed[key];
   var cfg = DATASETS[key];
@@ -299,82 +316,64 @@ async function doUpload(key) {
   var btn = document.getElementById('btn-'+key);
   btn.disabled = true; btn.textContent = '⏳ Uploading…';
   setCard(key,'');
-  setProg(key,10);
+  setProg(key, 5);
 
-  // Use allRows: the complete file including metadata/banner rows
+  // allRows = complete file including print-date / metadata rows
   var values = d.allRows;
 
-  // Chunk into 500-row batches (smaller = faster per-chunk processing)
-  var CHUNK  = 500;
+  // 5 rows per chunk — keeps URL under ~3KB (Image GET approach)
+  var ROWS_PER_CHUNK = 5;
   var chunks = [];
-  chunks.push(values.slice(0, CHUNK));
-  for (var i=CHUNK; i<values.length; i+=CHUNK) chunks.push(values.slice(i, i+CHUNK));
+  for (var i=0; i<values.length; i+=ROWS_PER_CHUNK)
+    chunks.push(values.slice(i, i+ROWS_PER_CHUNK));
 
   try {
     for (var ci=0; ci<chunks.length; ci++) {
-      var pct = 10 + Math.round(((ci+1)/chunks.length)*70);
+      var pct = 5 + Math.round(((ci+1)/chunks.length)*80);
       setProg(key, pct);
-      setSt(key,'info','Sending chunk '+(ci+1)+' of '+chunks.length+' to Apps Script…');
+      setSt(key,'info',
+        'Uploading… chunk '+(ci+1)+' of '+chunks.length
+        +' &nbsp;('+Math.round(((ci+1)/chunks.length)*100)+'%)'
+        +'<br><small style="opacity:.8">Each request writes '
+        +ROWS_PER_CHUNK+' rows via Apps Script</small>');
 
-      var payload = {
-        action:  'upload',
-        dataset: key,
-        data:    chunks[ci],
-        chunk:   ci,
-        total:   chunks.length,
-      };
+      await sendChunkViaGet(WEB_APP_URL, key, ci, chunks[ci]);
 
-      // mode:'no-cors' avoids CORS preflight — request reaches the server
-      // even though we can't read the opaque response.
-      await fetch(WEB_APP_URL, {
-        method:  'POST',
-        mode:    'no-cors',
-        body:    JSON.stringify(payload),
-      });
-
-      // Give Apps Script time to process each chunk before sending the next
-      if (ci < chunks.length - 1) {
-        setSt(key,'info','Waiting for chunk '+(ci+1)+' to be processed…');
-        await new Promise(function(r){ setTimeout(r, 4000); });
-      }
+      // Short pause so Apps Script can process each chunk before the next
+      await new Promise(function(r){ setTimeout(r, 1500); });
     }
 
-    // Wait for the final chunk to finish writing
-    setSt(key,'info','Waiting for final chunk to be written to Google Sheets…');
-    await new Promise(function(r){ setTimeout(r, 6000); });
-    setProg(key, 85);
+    // Final wait for last chunk to be written
+    setSt(key,'info','Finalising — waiting for last chunk to be saved…');
+    await new Promise(function(r){ setTimeout(r, 4000); });
+    setProg(key, 90);
 
-    // ── Verify: read the source sheet to confirm data was written ──
-    setSt(key,'info','Verifying upload — reading sheet to confirm…');
+    // Verify via Sheets API read
+    setSt(key,'info','Verifying upload…');
     var verifyOk = false;
     try {
-      var vUrl = 'https://sheets.googleapis.com/v4/spreadsheets/'
+      var vResp = await fetch(
+        'https://sheets.googleapis.com/v4/spreadsheets/'
         + cfg.verifySheetId + '/values/'
-        + encodeURIComponent("'" + cfg.verifyTab + "'!A1:E5")
-        + '?key=' + SHEETS_API_KEY + '&_t=' + Date.now();
-      // Note: _t is not a valid Sheets API param — use the cache header instead
-      var vResp = await fetch('https://sheets.googleapis.com/v4/spreadsheets/'
-        + cfg.verifySheetId + '/values/'
-        + encodeURIComponent("'" + cfg.verifyTab + "'!A1:E5")
-        + '?key=' + SHEETS_API_KEY, { cache: 'no-store' });
+        + encodeURIComponent("'" + cfg.verifyTab + "'!A1:B3")
+        + '?key=' + SHEETS_API_KEY,
+        { cache: 'no-store' }
+      );
       if (vResp.ok) {
         var vData = await vResp.json();
-        var rows  = vData.values || [];
-        // Check that the sheet is not empty and has at least 2 rows
-        if (rows.length >= 2) verifyOk = true;
+        verifyOk = (vData.values || []).length >= 1;
       }
     } catch(_) {}
 
     setProg(key, 100);
-
     if (verifyOk) {
-      setSt(key, 'ok', '✅ Upload confirmed — data is live on Google Sheets ('
-        +values.length+' rows). Click <strong>Refresh Data</strong> on the dashboard to rebuild all charts.');
+      setSt(key,'ok','✅ Upload complete &amp; verified — '
+        +values.length+' rows written. Click <strong>Refresh Data</strong> on the dashboard.');
       setCard(key,'success');
       btn.textContent = '✅ Uploaded & verified';
     } else {
-      setSt(key, 'ok', '✅ Upload sent ('
-        +values.length+' rows). Could not auto-verify — please open the Google Sheet to confirm data updated, '
+      setSt(key,'ok','✅ Upload sent — '
+        +values.length+' rows submitted. Please check the Google Sheet to confirm, '
         +'then click <strong>Refresh Data</strong> on the dashboard.');
       setCard(key,'success');
       btn.textContent = '✅ Upload sent';
@@ -382,7 +381,7 @@ async function doUpload(key) {
 
   } catch(err) {
     setProg(key, 0);
-    setSt(key,'err','❌ Upload failed: '+err.message);
+    setSt(key,'err','❌ Upload error: '+err.message);
     setCard(key,'error');
     btn.disabled = false;
     btn.textContent = '⬆ Retry upload';

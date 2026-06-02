@@ -768,6 +768,19 @@ function writeMeta_(ss, kvs) {
 
 function doGet(e) {
   try {
+    // ── Upload via GET (base64-encoded data in query param) ────────
+    // Used by data-uploader.html — GET avoids all CORS issues
+    if (e && e.parameter && e.parameter.action === 'upload') {
+      var dataset  = e.parameter.dataset;
+      var chunkIdx = parseInt(e.parameter.chunk || '0', 10);
+      var dataB64  = e.parameter.data;
+      // Decode base64 → UTF-8 string → JSON array
+      var decoded  = Utilities.newBlob(Utilities.base64Decode(dataB64)).getDataAsString('UTF-8');
+      var data     = JSON.parse(decoded);
+      return handleUpload_({ action:'upload', dataset:dataset, data:data, chunk:chunkIdx });
+    }
+
+    // ── Default: run derive ────────────────────────────────────────
     const built_at = deriveDashboard();
     return ContentService
       .createTextOutput(JSON.stringify({ status: 'ok', built_at: built_at }))
