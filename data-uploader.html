@@ -188,10 +188,19 @@ function processFile(file, key) {
                         .filter(function(r){ return !r.every(function(c){return c===''; }); });
 
       var skipNote  = headerIdx > 0
-        ? ' (skipped ' + headerIdx + ' metadata row' + (headerIdx>1?'s':'') + ' — header found at row ' + (headerIdx+1) + ')'
+        ? ' Header at row ' + (headerIdx+1) + ' — ' + headerIdx + ' metadata row' + (headerIdx>1?'s':'') + ' (print date etc.) will also be uploaded.'
         : '';
 
-      parsed[key] = { headers:headers, rows:dataRows, skipNote:skipNote };
+      // allRows: the COMPLETE file including any metadata/banner rows
+      // This ensures print-date and report-title rows are also replaced on the sheet.
+      var allRows = all.map(function(r) {
+        var out = [];
+        for (var i = 0; i < Math.max(r.length, headers.length); i++)
+          out.push(r[i] !== undefined ? String(r[i]) : '');
+        return out;
+      });
+
+      parsed[key] = { headers:headers, rows:dataRows, allRows:allRows, skipNote:skipNote };
       validate(key);
     } catch(err) { setSt(key,'err','Could not read file: '+err.message); }
   };
@@ -282,18 +291,13 @@ async function doUpload(key) {
   setSt(key,'info','Sending data to Google Sheets…');
   setProg(key,20);
 
-  // Build the values array: [header row] + data rows, padded to uniform width
-  var nCols  = d.headers.length;
-  var values = [d.headers].concat(d.rows.map(function(r){
-    var out = [];
-    for (var i=0;i<nCols;i++) out.push(r[i]!==undefined?String(r[i]):'');
-    return out;
-  }));
+  // Use allRows (complete file including print-date / metadata rows).
+  // This replaces the entire sheet content — banner rows included.
+  var values = d.allRows;
 
   // Chunk into batches of 1000 rows to avoid payload size limits
   var CHUNK = 1000;
   var chunks = [];
-  // First chunk always includes the header
   chunks.push(values.slice(0, CHUNK));
   for (var i=CHUNK; i<values.length; i+=CHUNK) chunks.push(values.slice(i, i+CHUNK));
 

@@ -849,23 +849,23 @@ function handleUpload_(payload) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  var chunkIdx = payload.chunk  || 0;   // 0 = first (clear + write), >0 = append
-  var startRow = cfg.bannerRows + 1;
+  var chunkIdx = payload.chunk || 0;  // 0 = first chunk (clear entire sheet + write), >0 = append
   var numCols  = data[0].length;
 
   if (chunkIdx === 0) {
-    // First chunk: clear ALL existing data then write
+    // First chunk: clear the ENTIRE sheet from row 1 (including banner/metadata rows)
+    // so print-date and report-title rows from the new file are written too.
     var lastRow = sheet.getLastRow();
     var lastCol = Math.max(sheet.getLastColumn(), numCols);
-    if (lastRow >= startRow) {
-      sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).clearContent();
-      sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).clearFormats();
+    if (lastRow >= 1) {
+      sheet.getRange(1, 1, lastRow, lastCol).clearContent();
+      sheet.getRange(1, 1, lastRow, lastCol).clearFormats();
     }
-    var range = sheet.getRange(startRow, 1, data.length, numCols);
+    var range = sheet.getRange(1, 1, data.length, numCols);
     range.setNumberFormat('@');
     range.setValues(data);
   } else {
-    // Subsequent chunks: append after existing data
+    // Subsequent chunks: append after whatever was already written
     var appendRow = sheet.getLastRow() + 1;
     var range2 = sheet.getRange(appendRow, 1, data.length, numCols);
     range2.setNumberFormat('@');
