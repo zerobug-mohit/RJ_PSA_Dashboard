@@ -632,12 +632,11 @@ var FC  = {};
 async function fetchTab(tab) {
   // No valueRenderOption needed — Code.gs writes all cells as plain text
   // (setNumberFormat('@')), so dates are stored and returned as ISO strings.
-  // &_t= busts browser cache so polling always gets fresh data
+  // cache:'no-store' prevents browser caching without passing extra params to the API
   const url = 'https://sheets.googleapis.com/v4/spreadsheets/'
     + DASH_CONFIG.spreadsheetId
     + '/values/' + encodeURIComponent(tab)
-    + '?key=' + DASH_CONFIG.apiKey
-    + '&_t=' + Date.now();
+    + '?key=' + DASH_CONFIG.apiKey;
   const resp = await fetch(url, { cache: 'no-store' });
   if (!resp.ok) {
     let detail = '';
@@ -987,7 +986,7 @@ async function refreshDashboard() {
   // Fire the trigger two ways to maximise the chance the Apps Script executes:
   // 1. no-cors fetch (standard)
   // 2. Image request (zero CORS restrictions, always reaches the server)
-  const triggerUrl = deriveUrl + (deriveUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+  const triggerUrl = deriveUrl;
   try { await fetch(triggerUrl, { mode: 'no-cors', cache: 'no-store' }); } catch(_) {}
   try {
     await new Promise(function(resolve) {
