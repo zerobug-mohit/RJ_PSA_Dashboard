@@ -1182,6 +1182,9 @@ function injectDeptFilters_() {
     bar.insertBefore(sep,              fromLabel || fromEl);
     bar.insertBefore(label,            fromLabel || fromEl);
     bar.insertBefore(wrap.firstChild,  fromLabel || fromEl);
+
+    // Now the DOM exists — populate the department list
+    msRenderDept(pg.msId);
   });
 }
 
@@ -4193,6 +4196,7 @@ function msRebuildPlants(plantId, distId) {
 function msFilter(id) {
   const cfg = MS_CONFIG[id];
   if(cfg.type === 'district') msRenderDistricts(id);
+  else if(cfg.type === 'dept') msRenderDept(id);
   else {
     const pg = cfg.page;
     msRenderPlants(id, msGet('ms'+pg+'d'));
@@ -4222,18 +4226,19 @@ function msUpdateTrigger(id) {
   if(!label) return;
   const cfg = MS_CONFIG[id];
   if(n === 0) {
-    label.textContent = cfg.type==='district' ? 'All districts' : 'All plants';
+    label.textContent = cfg.type==='district' ? 'All districts' : cfg.type==='dept' ? 'All departments' : 'All plants';
     count.style.display = 'none';
   } else if(n === 1) {
     const v = Array.from(sel)[0];
-    if(cfg.type==='district') label.textContent = v;
-    else {
+    if(cfg.type==='district' || cfg.type==='dept') {
+      label.textContent = v;
+    } else {
       const p = RAW.slim_plants.find(x=>String(x.c)===v);
       label.textContent = p ? `#${p.c} ${(p.sf||p.of).slice(0,24)}…` : `#${v}`;
     }
     count.style.display = 'none';
   } else {
-    label.textContent = cfg.type==='district' ? `${n} districts` : `${n} plants`;
+    label.textContent = cfg.type==='district' ? `${n} districts` : cfg.type==='dept' ? `${n} departments` : `${n} plants`;
     count.textContent = n;
     count.style.display = 'inline-block';
   }
@@ -4248,8 +4253,9 @@ function msClear(id) {
   MS_STATE[id] = new Set();
   msUpdateTrigger(id);
   const cfg = MS_CONFIG[id];
-  if(cfg.type==='district') msRenderDistricts(id);
-  else msRenderPlants(id, msGet('ms'+cfg.page+'d'));
+  if(cfg.type==='district')    msRenderDistricts(id);
+  else if(cfg.type==='dept')   msRenderDept(id);
+  else                          msRenderPlants(id, msGet('ms'+cfg.page+'d'));
   cfg.onChange();
 }
 
@@ -4308,8 +4314,9 @@ function msRemoveItem(id, val, pgEl, pgNum) {
   if(MS_STATE[id]) MS_STATE[id].delete(val);
   msUpdateTrigger(id);
   const cfg = MS_CONFIG[id];
-  if(cfg.type==='district') msRenderDistricts(id);
-  else msRenderPlants(id, msGet('ms'+pgNum+'d'));
+  if(cfg.type==='district')    msRenderDistricts(id);
+  else if(cfg.type==='dept')   msRenderDept(id);
+  else                          msRenderPlants(id, msGet('ms'+pgNum+'d'));
   cfg.onChange();
 }
 
