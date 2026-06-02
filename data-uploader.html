@@ -147,6 +147,26 @@ function dop(e,k){e.preventDefault();dol(k);processFile(e.dataTransfer.files[0],
 function onFile(e,k){processFile(e.target.files[0],k);}
 
 // ── Parse file ──────────────────────────────────────────────────────
+/* Auto-detect the actual header row by finding the row (within first 30)
+   that contains the most required column names.
+   This handles files with "Print Date", report-title, or other metadata
+   rows above the actual data table.                                     */
+function findHeaderRow(rows, requiredCols) {
+  var bestIdx = 0, bestScore = 0;
+  var limit   = Math.min(rows.length, 30);
+  for (var i = 0; i < limit; i++) {
+    var norm  = rows[i].map(function(c){ return String(c).trim().toLowerCase(); });
+    var score = 0;
+    requiredCols.forEach(function(col){
+      if (norm.some(function(h){ return h === col.toLowerCase(); })) score++;
+    });
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+    if (bestScore === requiredCols.length) break; // perfect match — stop early
+  }
+  // Need ≥2 required cols matched to confirm this is the header row
+  return bestScore >= Math.min(2, requiredCols.length) ? bestIdx : 0;
+}
+
 function processFile(file, key) {
   if (!file) return;
   setSt(key,'info','Reading file…');
@@ -159,9 +179,19 @@ function processFile(file, key) {
       // Trim trailing empty rows
       while (all.length > 0 && all[all.length-1].every(function(c){return c==='';}) ) all.pop();
       if (all.length < 2) { setSt(key,'err','File is empty or has no data rows.'); return; }
-      var headers  = all[0].map(function(h){return String(h).trim();});
-      var dataRows = all.slice(1);
-      parsed[key]  = { headers:headers, rows:dataRows };
+
+      // Auto-detect header row (skip print-date / report-title rows)
+      var cfg       = DATASETS[key];
+      var headerIdx = findHeaderRow(all, cfg.requiredCols);
+      var headers   = all[headerIdx].map(function(h){ return String(h).trim(); });
+      var dataRows  = all.slice(headerIdx + 1)
+                        .filter(function(r){ return !r.every(function(c){return c===''; }); });
+
+      var skipNote  = headerIdx > 0
+        ? ' (skipped ' + headerIdx + ' metadata row' + (headerIdx>1?'s':'') + ' — header found at row ' + (headerIdx+1) + ')'
+        : '';
+
+      parsed[key] = { headers:headers, rows:dataRows, skipNote:skipNote };
       validate(key);
     } catch(err) { setSt(key,'err','Could not read file: '+err.message); }
   };
@@ -215,6 +245,7 @@ function validate(key) {
 
   vEl.className = 'val-box val-ok';
   vEl.innerHTML = '✅ Validation passed — '+d.headers.length+' columns, '+d.rows.length+' data rows'
+    +(d.skipNote?'<br><small style="opacity:.8">ℹ '+d.skipNote+'</small>':'')
     +(warns.length?'<div class="val-warn" style="margin-top:8px">⚠ '+warns.join('<br>')+'</div>':'');
   showPreview(key);
   document.getElementById('btn-'+key).style.display = 'block';
