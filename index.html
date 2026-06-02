@@ -179,6 +179,10 @@ input[type=date]:focus{outline:none;border-color:#aaa}
 .filterbar{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .fl{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
 .filter-sep{width:1px;height:24px;background:var(--border);margin:0 2px}
+/* ---- Department filter select ---- */
+.dept-sel{font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);cursor:pointer;max-width:180px}
+.dept-sel:focus{outline:none;border-color:var(--blue)}
+
 /* ---- Export toolbar ---- */
 .export-toolbar{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
 .export-btn{font-size:10px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:4px;padding:3px 9px;cursor:pointer;transition:all .12s;line-height:1.4;white-space:nowrap}
@@ -821,10 +825,11 @@ async function loadDashboard() {
     const pObjs = rowsToObjects(plantsVals);
     RAW.slim_plants = pObjs.map(function(r) {
       return {
-        c:   +r.code,
-        dd:  r.district,
-        of:  r.ona_facility,
-        sf:  r.sih_facility,
+        c:    +r.code,
+        dd:   r.district,
+        dept: r.department || '',
+        of:   r.ona_facility,
+        sf:   r.sih_facility,
         co:  r.ona_capacity       !== '' ? +r.ona_capacity       : null,
         cs:  r.sih_capacity       !== '' ? +r.sih_capacity       : null,
         os:  r.ona_status,
@@ -1067,8 +1072,10 @@ function makeFilterBar_(pgIdx) {
   var from     = fromEl ? fromEl.value : '';
   var to       = toEl   ? toEl.value   : '';
 
+  var dept = getDeptFilter(pgIdx);
   var parts = [];
   if (distSel.length)  parts.push('<strong>District:</strong> ' + distSel.join(', '));
+  if (dept)            parts.push('<strong>Department:</strong> ' + dept);
   if (plantSel.length) {
     var labels = plantSel.map(function(code) {
       var p = (RAW.slim_plants || []).find(function(pl) { return String(pl.c) === code; });
@@ -1141,11 +1148,62 @@ document.addEventListener('mouseover', function(e) {
   if (window.innerHeight - rect.bottom < 220 && rect.top > 120) box.classList.add('above');
 });
 
+/* ---- Department filter injection ---- */
+function injectDeptFilters_() {
+  if (document.getElementById('dept-f1')) return; // already injected
+
+  // Collect unique non-empty departments from loaded plant data
+  var depts = [];
+  var seen  = {};
+  (RAW.slim_plants || []).forEach(function(p) {
+    if (p.dept && !seen[p.dept]) { seen[p.dept] = 1; depts.push(p.dept); }
+  });
+  depts.sort();
+
+  var opts = '<option value="">All departments</option>'
+    + depts.map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('');
+
+  // Pages: dateInputId → pgIdx
+  var pages = [
+    { fromId: 'f1from', pgIdx: '1' },
+    { fromId: 'f2from', pgIdx: '2' },
+    { fromId: 'f3from', pgIdx: '3' },
+  ];
+
+  pages.forEach(function(pg) {
+    var fromEl = document.getElementById(pg.fromId);
+    if (!fromEl) return;
+    var bar = fromEl.parentElement; // the filterbar div
+
+    // Build: sep | "Department" label | <select>
+    var sep   = document.createElement('div'); sep.className = 'filter-sep';
+    var label = document.createElement('span'); label.className = 'fl'; label.textContent = 'Department';
+    var sel   = document.createElement('select');
+    sel.id        = 'dept-f' + pg.pgIdx;
+    sel.className = 'dept-sel';
+    sel.innerHTML = opts;
+    (function(pgIdx) {
+      sel.addEventListener('change', function() {
+        DEPT_FILTERS[pgIdx] = this.value;
+        if (pgIdx === '1') rp1();
+        else if (pgIdx === '2') rp2();
+        else rp3();
+      });
+    })(pg.pgIdx);
+
+    // Insert before the "From date" element
+    bar.insertBefore(sep,   fromEl.previousElementSibling || fromEl);
+    bar.insertBefore(label, fromEl.previousElementSibling || fromEl);
+    bar.insertBefore(sel,   fromEl.previousElementSibling || fromEl);
+  });
+}
+
 function initDashboard_() {
   buildPlantOpts_();
   msInitAll();
   injectGuides();
   injectDataDates();
+  injectDeptFilters_();
   initChartFilterBars_();
   updateMethodology();
   rp1(); rp2(); rp3();
@@ -1436,12 +1494,17 @@ function dc(id){if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];}}
 
 function fv(id){return document.getElementById(id).value;}
 function clearDates(a,b,fn){document.getElementById(a).value='';document.getElementById(b).value='';fn();}
+var DEPT_FILTERS = {'1':'','2':'','3':''};
+function getDeptFilter(pgIdx){return DEPT_FILTERS[String(pgIdx)]||'';}
+
 function fp(plants,pgIdx){
   const dSel = msGet('ms'+pgIdx+'d');
   const pSel = msGet('ms'+pgIdx+'p');
+  const dept = getDeptFilter(pgIdx);
   return plants.filter(p=>{
     if(dSel.length && !dSel.includes(p.dd)) return false;
     if(pSel.length && !pSel.includes(String(p.c))) return false;
+    if(dept && p.dept !== dept) return false;
     return true;
   });
 }
@@ -4246,7 +4309,11 @@ function clearAllFilters(pgEl) {
   const pgNum = pgEl === 'pg0' ? '1' : pgEl === 'pg1' ? '2' : '3';
   msClear('ms'+pgNum+'d');
   msClear('ms'+pgNum+'p');
-  // also clear dates
+  // clear department filter
+  DEPT_FILTERS[pgNum] = '';
+  var deptEl = document.getElementById('dept-f' + pgNum);
+  if (deptEl) deptEl.value = '';
+  // clear dates
   if(pgNum==='1'){document.getElementById('f1from').value='';document.getElementById('f1to').value='';rp1();}
   if(pgNum==='2'){document.getElementById('f2from').value='';document.getElementById('f2to').value='';rp2();}
   if(pgNum==='3'){document.getElementById('f3from').value='';document.getElementById('f3to').value='';rp3();}

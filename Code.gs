@@ -321,6 +321,7 @@ function deriveDashboard() {
         sf:          asset.sf,
         cs:          asset.cap,
         dd:          asset.dd,
+        dept:        String(m['Department'] || '').trim(),
       };
     } else {
       missesB.push({ code: code, key: key });
@@ -564,7 +565,7 @@ function deriveDashboard() {
   // ------------------------------------------------------------------
   Logger.log('Building plant rows…');
   const plantHeaders = [
-    'code','district','ona_facility','sih_facility','ona_capacity','sih_capacity',
+    'code','district','department','ona_facility','sih_facility','ona_capacity','sih_capacity',
     'ona_status','ona_scheme','ona_purity','ona_drill_date','ona_nf_reason','ona_functional_reason',
     'eu_status','eu_purity','eu_running_hours','eu_drill_date','eu_leakage','eu_fire_safety',
     'qr_suffix','equipment_status','inventory_status','moic_verified_date',
@@ -602,6 +603,7 @@ function deriveDashboard() {
     plantRows.push([
       code,                                            // c
       cm.dd,                                           // dd
+      cm.dept || '',                                   // department
       cm.of,                                           // of (ONA facility name)
       cm.sf,                                           // sf (SIH facility name)
       cm.onaCap   != null ? cm.onaCap   : '',          // co (ONA capacity)
