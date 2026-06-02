@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PSA Dashboard — Data Uploader</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4f8;color:#1a2744;min-height:100vh}
+
+/* ── Top bar ── */
+.topbar{background:#1a2744;color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px}
+.topbar h1{font-size:16px;font-weight:600;flex:1}
+.topbar .version{font-size:11px;opacity:0.5}
+
+/* ── Auth section ── */
+#auth-section{padding:40px 24px;text-align:center}
+.auth-card{background:#fff;border-radius:12px;padding:40px 32px;max-width:440px;margin:0 auto;box-shadow:0 2px 16px rgba(0,0,0,0.08)}
+.auth-card h2{font-size:18px;margin-bottom:8px}
+.auth-card p{font-size:13px;color:#64748b;margin-bottom:24px;line-height:1.6}
+#signin-btn{background:#1a73e8;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:10px;transition:background .15s}
+#signin-btn:hover{background:#1557b0}
+.signed-in-bar{display:none;align-items:center;gap:10px;background:#e8f5e9;border-radius:8px;padding:10px 16px;font-size:13px;color:#2e7d32;margin-bottom:0}
+.signed-in-bar button{margin-left:auto;background:none;border:1px solid #2e7d32;color:#2e7d32;padding:4px 12px;border-radius:5px;cursor:pointer;font-size:12px}
+
+/* ── Main content ── */
+#main{display:none;padding:24px;max-width:1100px;margin:0 auto}
+.section-header{margin-bottom:20px}
+.section-header h2{font-size:20px;font-weight:700;color:#1a2744}
+.section-header p{font-size:13px;color:#64748b;margin-top:4px}
+
+/* ── Dataset cards ── */
+.datasets{display:grid;grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:20px}
+.dataset-card{background:#fff;border-radius:12px;border:1.5px solid #e2e8f0;overflow:hidden}
+.dataset-card.uploading{border-color:#1a73e8}
+.dataset-card.success{border-color:#16a34a}
+.dataset-card.error{border-color:#dc2626}
+.card-header{padding:16px 20px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:12px}
+.card-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.card-icon.ona{background:#dbeafe}
+.card-icon.eu{background:#dcfce7}
+.card-icon.comp{background:#fef3c7}
+.card-icon.reg{background:#f3e8ff}
+.card-header-text h3{font-size:14px;font-weight:600}
+.card-header-text p{font-size:11px;color:#94a3b8;margin-top:2px}
+.card-body{padding:16px 20px}
+
+/* ── Upload zone ── */
+.upload-zone{border:2px dashed #cbd5e1;border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;transition:all .15s;position:relative}
+.upload-zone:hover,.upload-zone.drag-over{border-color:#1a73e8;background:#eff6ff}
+.upload-zone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-zone .uz-icon{font-size:28px;margin-bottom:8px}
+.upload-zone p{font-size:13px;color:#64748b}
+.upload-zone strong{color:#1a2744;font-size:13px}
+.upload-zone .uz-hint{font-size:11px;color:#94a3b8;margin-top:4px}
+
+/* ── Validation result ── */
+.validation-result{margin-top:14px;display:none}
+.val-ok{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;font-size:12px;color:#16a34a}
+.val-err{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:12px;color:#dc2626}
+.val-err ul{margin-top:6px;padding-left:16px;line-height:1.8}
+.val-warn{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e}
+
+/* ── Preview table ── */
+.preview-wrap{margin-top:12px;display:none}
+.preview-label{font-size:11px;font-weight:600;color:#64748b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.preview-table-wrap{overflow-x:auto;max-height:180px;border:1px solid #e2e8f0;border-radius:6px}
+.preview-table{border-collapse:collapse;font-size:11px;width:100%}
+.preview-table th{background:#f8fafc;padding:6px 10px;text-align:left;font-weight:600;color:#475569;border-bottom:1px solid #e2e8f0;position:sticky;top:0;white-space:nowrap}
+.preview-table td{padding:5px 10px;border-bottom:1px solid #f1f5f9;color:#374151;white-space:nowrap}
+.preview-meta{font-size:12px;color:#64748b;margin-top:6px}
+
+/* ── Upload button ── */
+.upload-btn{display:none;width:100%;margin-top:14px;padding:11px;background:#1a2744;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s}
+.upload-btn:hover{background:#1e3a8a}
+.upload-btn:disabled{background:#94a3b8;cursor:not-allowed}
+.upload-btn.danger{background:#dc2626}
+.upload-btn.danger:hover{background:#b91c1c}
+
+/* ── Progress & status ── */
+.status-bar{display:none;margin-top:12px;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:500}
+.status-bar.info{background:#eff6ff;color:#1d4ed8}
+.status-bar.success{background:#f0fdf4;color:#16a34a}
+.status-bar.error{background:#fef2f2;color:#dc2626}
+.progress{height:4px;border-radius:2px;background:#e2e8f0;margin-top:8px;overflow:hidden;display:none}
+.progress-bar{height:100%;background:#1a73e8;width:0;transition:width .3s;border-radius:2px}
+
+/* ── Setup instructions ── */
+.setup-note{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;font-size:12px;color:#92400e;margin-bottom:20px;line-height:1.7}
+.setup-note strong{color:#78350f}
+.setup-note code{background:#fef3c7;padding:1px 4px;border-radius:3px;font-size:11px}
+</style>
+</head>
+<body>
+
+<!-- ── CONFIG — fill these before using ── -->
+<script>
+const UPLOADER_CONFIG = {
+  // Step 1: Create an OAuth 2.0 Client ID at console.cloud.google.com
+  // APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID
+  // Application type: Web application
+  // Authorised JavaScript origins: add your domain (e.g. https://zerobug-mohit.github.io)
+  oauthClientId: 'PASTE_YOUR_OAUTH_CLIENT_ID_HERE',
+
+  // Spreadsheet IDs (already filled from your project)
+  sheets: {
+    ona: {
+      label:         'ONA Mockdrill',
+      icon:          '📋',
+      iconClass:     'ona',
+      spreadsheetId: '1VKJL8bqEpiqnMuNsq91sJ4AGzN34xfurabouXS-IpHs',
+      tabName:       'data',
+      bannerRows:    0,          // header is row 1, data from row 2
+      fileHint:      'ONA_MockDrill.xlsx  (tab: data)',
+      requiredCols:  [
+        'Gen_Information/District',
+        'Gen_Information/Facility',
+        'Gen_Information/Wheather_fn',
+      ],
+      // At least one date column must be present
+      dateCols: ['Gen_Information/date_of_assessment','Gen_Information/_submission_time'],
+      minRows: 10,
+      description: 'Replace ONA mock-drill submissions data. Upload the full dataset — existing data will be replaced.',
+    },
+    eupkaran: {
+      label:         'e-Upkaran Mockdrill',
+      icon:          '🔬',
+      iconClass:     'eu',
+      spreadsheetId: '1_q3eXx0ezZ4L0SybAxlMWuWaSdUlUomDjVf0rBoNX84',
+      tabName:       'sheet1',
+      bannerRows:    3,          // rows 1-3 are banner; header is row 4, data from row 5
+      fileHint:      'e-upkaran_MockDrill.xlsx  (tab: sheet1, skip first 3 banner rows — upload from the header row)',
+      requiredCols:  [
+        'District Name',
+        'Hospital Name',
+        'Equipment Status',
+        'Date of Mockdrill',
+        'Capacity of PSA Plant (in LPM)',
+        'Purity(in percent)',
+        'Total running hours',
+      ],
+      dateCols: ['Date of Mockdrill'],
+      minRows: 5,
+      description: 'Replace e-Upkaran equipment scan & drill records. Upload from the header row (skip banner rows in your export).',
+    },
+    complaints: {
+      label:         'Complaints Data',
+      icon:          '📞',
+      iconClass:     'comp',
+      spreadsheetId: '1jwzifzH5t7lnl9bp_9A64D9E3RvVhuLBa8lmrpwrjHg',
+      tabName:       'Complaints',
+      bannerRows:    0,
+      fileHint:      'ComplaintsData.xlsx  (tab: Complaints — CMC + AMC merged)',
+      requiredCols:  [
+        'District Name',
+        'Hospital Name',
+        'Service Provider QR Code',
+        'Complaint Raise Date',
+      ],
+      dateCols: ['Complaint Raise Date'],
+      minRows: 5,
+      description: 'Replace the complaints dataset. Merge CMC and AMC into one tab before uploading.',
+    },
+    registry: {
+      label:         'Stock on Hand (Registry)',
+      icon:          '🏥',
+      iconClass:     'reg',
+      spreadsheetId: '1fnUdcqFIq0xn7zB2YowV0L5ggU6kZ3A0d8d1CTq97CU',
+      tabName:       'sheet1',
+      bannerRows:    3,
+      fileHint:      'stockOnHandReport.xlsx  (tab: sheet1, upload from the header row)',
+      requiredCols:  [
+        'District Name',
+        'Hospital Name',
+        'QR Code',
+        'Equipment Status',
+        'Inventory Status',
+        'Capacity of PSA Plant (in LPM)',
+      ],
+      dateCols: ['MOIC Verified Date'],
+      minRows: 100,
+      description: 'Replace the master asset registry. Upload from the header row (skip 3 banner rows in your export).',
+    },
+  },
+};
+</script>
+
+<!-- ── Top bar ── -->
+<div class="topbar">
+  <h1>PSA Dashboard — Data Uploader</h1>
+  <span class="version">Rajasthan</span>
+</div>
+
+<!-- ── Auth section ── -->
+<div id="auth-section">
+  <div class="auth-card">
+    <h2>Sign in to upload data</h2>
+    <p>This tool replaces data on the PSA Dashboard Google Sheets. Sign in with the Google account that owns the sheets to get write permission.</p>
+    <button id="signin-btn" onclick="requestToken()">
+      <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Sign in with Google
+    </button>
+    <div class="signed-in-bar" id="signed-in-bar">
+      <span>✅ Signed in as <strong id="user-email"></strong></span>
+      <button onclick="signOut()">Sign out</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Main content ── -->
+<div id="main">
+  <div class="section-header">
+    <h2>Upload Dataset</h2>
+    <p>Select a dataset, upload your Excel file, review validation, then confirm the upload. Existing data will be replaced.</p>
+  </div>
+
+  <div id="setup-warning" class="setup-note" style="display:none">
+    ⚠ <strong>Setup required:</strong> Open this file in a text editor and paste your OAuth 2.0 Client ID into <code>UPLOADER_CONFIG.oauthClientId</code>.
+    Create one at <strong>console.cloud.google.com → APIs &amp; Services → Credentials → Create OAuth 2.0 Client ID</strong>.
+    Set Authorised JavaScript Origins to your hosting domain.
+  </div>
+
+  <div class="datasets" id="datasets-grid">
+    <!-- Cards injected by JS -->
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────
+var tokenClient = null;
+var accessToken = null;
+var parsedData  = {};   // datasetKey → {headers, rows}
+
+// ── OAuth2 ─────────────────────────────────────────────────────────
+function requestToken() {
+  if (!tokenClient) {
+    if (!UPLOADER_CONFIG.oauthClientId || UPLOADER_CONFIG.oauthClientId.includes('PASTE')) {
+      document.getElementById('setup-warning').style.display = 'block';
+      document.getElementById('main').style.display = 'block';
+      document.getElementById('auth-section').style.display = 'none';
+      renderCards();
+      return;
+    }
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: UPLOADER_CONFIG.oauthClientId,
+      scope: 'https://www.googleapis.com/auth/spreadsheets',
+      callback: function(resp) {
+        if (resp.error) { alert('Sign-in failed: ' + resp.error); return; }
+        accessToken = resp.access_token;
+        showMain();
+      },
+    });
+  }
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+function showMain() {
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  }).then(r=>r.json()).then(function(u) {
+    document.getElementById('user-email').textContent = u.email || 'Google account';
+    document.getElementById('signed-in-bar').style.display = 'flex';
+  }).catch(function(){});
+  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('main').style.display = 'block';
+  renderCards();
+}
+
+function signOut() {
+  google.accounts.oauth2.revoke(accessToken, function(){});
+  accessToken = null;
+  document.getElementById('auth-section').style.display = 'block';
+  document.getElementById('main').style.display = 'none';
+  document.getElementById('signed-in-bar').style.display = 'none';
+  parsedData = {};
+}
+
+// ── Render dataset cards ───────────────────────────────────────────
+function renderCards() {
+  var grid = document.getElementById('datasets-grid');
+  grid.innerHTML = Object.keys(UPLOADER_CONFIG.sheets).map(function(key) {
+    var s = UPLOADER_CONFIG.sheets[key];
+    return '<div class="dataset-card" id="card-' + key + '">'
+      + '<div class="card-header">'
+      + '<div class="card-icon ' + s.iconClass + '">' + s.icon + '</div>'
+      + '<div class="card-header-text"><h3>' + s.label + '</h3><p>' + s.fileHint + '</p></div>'
+      + '</div>'
+      + '<div class="card-body">'
+      + '<p style="font-size:12px;color:#64748b;margin-bottom:12px;line-height:1.6">' + s.description + '</p>'
+      + '<div class="upload-zone" id="zone-' + key + '" ondragover="dragOver(event,\'' + key + '\')" ondragleave="dragLeave(\'' + key + '\')" ondrop="dropFile(event,\'' + key + '\')">'
+      + '<input type="file" accept=".xlsx,.xls,.csv" onchange="handleFile(event,\'' + key + '\')">'
+      + '<div class="uz-icon">📂</div>'
+      + '<strong>Click to browse or drag &amp; drop</strong>'
+      + '<p>' + s.label + ' Excel / CSV file</p>'
+      + '<p class="uz-hint">Accepted: .xlsx, .xls, .csv</p>'
+      + '</div>'
+      + '<div class="validation-result" id="val-' + key + '"></div>'
+      + '<div class="preview-wrap" id="preview-' + key + '">'
+      + '<div class="preview-label">Data preview (first 5 rows)</div>'
+      + '<div class="preview-table-wrap" id="preview-table-' + key + '"></div>'
+      + '<p class="preview-meta" id="preview-meta-' + key + '"></p>'
+      + '</div>'
+      + '<button class="upload-btn danger" id="btn-' + key + '" onclick="confirmUpload(\'' + key + '\')">⬆ Replace data on Google Sheets</button>'
+      + '<div class="status-bar" id="status-' + key + '"></div>'
+      + '<div class="progress" id="prog-' + key + '"><div class="progress-bar" id="progbar-' + key + '"></div></div>'
+      + '</div></div>';
+  }).join('');
+}
+
+// ── File handling ──────────────────────────────────────────────────
+function dragOver(e, key) { e.preventDefault(); document.getElementById('zone-'+key).classList.add('drag-over'); }
+function dragLeave(key)   { document.getElementById('zone-'+key).classList.remove('drag-over'); }
+function dropFile(e, key) { e.preventDefault(); dragLeave(key); processFile(e.dataTransfer.files[0], key); }
+function handleFile(e, key) { processFile(e.target.files[0], key); }
+
+function processFile(file, key) {
+  if (!file) return;
+  setStatus(key, 'info', 'Reading file…');
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, { type: 'binary', cellDates: false, raw: false });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+      // Strip empty trailing rows
+      while (allRows.length > 0 && allRows[allRows.length-1].every(function(c){return c==='';})) {
+        allRows.pop();
+      }
+
+      if (allRows.length < 2) { setStatus(key,'error','File is empty or has no data rows.'); return; }
+
+      var headers = allRows[0].map(function(h){ return String(h).trim(); });
+      var dataRows = allRows.slice(1);
+
+      parsedData[key] = { headers: headers, rows: dataRows };
+      validate(key);
+    } catch(err) {
+      setStatus(key, 'error', 'Could not read file: ' + err.message);
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
+// ── Validation ─────────────────────────────────────────────────────
+function validate(key) {
+  var cfg    = UPLOADER_CONFIG.sheets[key];
+  var data   = parsedData[key];
+  var errors = [];
+  var warns  = [];
+
+  // 1. Required columns
+  cfg.requiredCols.forEach(function(col) {
+    if (!data.headers.some(function(h){ return h === col || h.toLowerCase() === col.toLowerCase(); })) {
+      errors.push('Missing required column: <strong>' + col + '</strong>');
+    }
+  });
+
+  // 2. At least one date column present
+  if (cfg.dateCols && cfg.dateCols.length > 0) {
+    var hasDate = cfg.dateCols.some(function(dc) {
+      return data.headers.some(function(h){ return h === dc || h.toLowerCase() === dc.toLowerCase(); });
+    });
+    if (!hasDate) {
+      errors.push('Missing date column — need at least one of: <strong>' + cfg.dateCols.join(', ') + '</strong>');
+    }
+  }
+
+  // 3. Minimum rows
+  if (data.rows.length < cfg.minRows) {
+    errors.push('Too few data rows: ' + data.rows.length + ' found, expected at least ' + cfg.minRows
+      + ' — are you uploading the correct file?');
+  }
+
+  // 4. Check for completely empty key columns
+  if (errors.length === 0 && cfg.requiredCols.length > 0) {
+    var firstReqCol = cfg.requiredCols[0];
+    var colIdx = data.headers.findIndex(function(h){ return h === firstReqCol || h.toLowerCase() === firstReqCol.toLowerCase(); });
+    if (colIdx >= 0) {
+      var nonEmpty = data.rows.filter(function(r){ return r[colIdx] && String(r[colIdx]).trim() !== ''; }).length;
+      if (nonEmpty < 1) {
+        errors.push('Column "' + firstReqCol + '" appears to be entirely empty — check file content.');
+      } else if (nonEmpty < data.rows.length * 0.5) {
+        warns.push('Column "' + firstReqCol + '" is empty in more than 50% of rows — verify the file.');
+      }
+    }
+  }
+
+  // Show result
+  var valEl = document.getElementById('val-' + key);
+  valEl.style.display = 'block';
+
+  if (errors.length > 0) {
+    valEl.innerHTML = '<div class="val-err">❌ Validation failed — fix these issues before uploading:'
+      + '<ul>' + errors.map(function(e){ return '<li>' + e + '</li>'; }).join('') + '</ul></div>';
+    if (warns.length > 0) {
+      valEl.innerHTML += '<div class="val-warn" style="margin-top:8px">⚠ ' + warns.join('<br>') + '</div>';
+    }
+    document.getElementById('btn-'+key).style.display = 'none';
+    document.getElementById('preview-'+key).style.display = 'none';
+    setStatus(key, 'error', 'File validation failed. See errors above.');
+  } else {
+    var warnHtml = warns.length > 0
+      ? '<div class="val-warn" style="margin-top:8px">⚠ ' + warns.join('<br>') + '</div>' : '';
+    valEl.innerHTML = '<div class="val-ok">✅ Validation passed — '
+      + data.headers.length + ' columns, '
+      + data.rows.length + ' data rows</div>' + warnHtml;
+
+    // Show preview
+    showPreview(key);
+    document.getElementById('btn-'+key).style.display = 'block';
+    setStatus(key, '', '');
+  }
+  clearStatus(key);
+}
+
+function showPreview(key) {
+  var data    = parsedData[key];
+  var previewWrap = document.getElementById('preview-' + key);
+  var tableWrap   = document.getElementById('preview-table-' + key);
+  var metaEl      = document.getElementById('preview-meta-' + key);
+
+  var previewRows = data.rows.slice(0, 5);
+  var th = data.headers.slice(0, 8).map(function(h){ return '<th>' + escHtml(String(h).slice(0,30)) + '</th>'; }).join('');
+  var hasTrunc = data.headers.length > 8;
+  if (hasTrunc) th += '<th>…</th>';
+
+  var tr = previewRows.map(function(row) {
+    var cells = data.headers.slice(0,8).map(function(h, i) {
+      return '<td>' + escHtml(String(row[i]||'').slice(0,40)) + '</td>';
+    }).join('');
+    if (hasTrunc) cells += '<td style="color:#94a3b8">…</td>';
+    return '<tr>' + cells + '</tr>';
+  }).join('');
+
+  tableWrap.innerHTML = '<table class="preview-table"><thead><tr>' + th + '</tr></thead><tbody>' + tr + '</tbody></table>';
+  metaEl.textContent  = data.rows.length + ' rows × ' + data.headers.length + ' columns';
+  previewWrap.style.display = 'block';
+}
+
+// ── Upload ─────────────────────────────────────────────────────────
+async function confirmUpload(key) {
+  if (!accessToken) {
+    alert('Not signed in. Please sign in with Google first.');
+    return;
+  }
+  var data = parsedData[key];
+  if (!data) { alert('No file loaded.'); return; }
+
+  var cfg = UPLOADER_CONFIG.sheets[key];
+  var confirmed = confirm(
+    'Replace all data in the "' + cfg.label + '" Google Sheet?\n\n'
+    + 'This will overwrite ' + data.rows.length + ' rows of existing data.\n'
+    + 'This cannot be undone.'
+  );
+  if (!confirmed) return;
+
+  var btn = document.getElementById('btn-' + key);
+  btn.disabled = true;
+  btn.textContent = '⏳ Uploading…';
+  showProgress(key, 10);
+  setStatus(key, 'info', 'Clearing existing data…');
+
+  try {
+    var sid     = cfg.spreadsheetId;
+    var tabName = cfg.tabName;
+    var headers = data.headers;
+    var rows    = data.rows;
+
+    // Build the values array: [header row, ...data rows]
+    var values = [headers].concat(rows.map(function(r) {
+      // Pad row to header length
+      var out = [];
+      for (var i=0; i<headers.length; i++) out.push(r[i] !== undefined ? r[i] : '');
+      return out;
+    }));
+
+    // Range to write
+    // For sheets with banner rows, start at row (bannerRows+1)
+    var startRow   = cfg.bannerRows + 1;
+    var endCol     = colLetter(headers.length);
+    var endRow     = startRow + values.length - 1;
+    var writeRange = "'" + tabName + "'!A" + startRow + ':' + endCol + endRow;
+    var clearRange = "'" + tabName + "'!A" + startRow + ':' + endCol + '10000';
+
+    // Step 1: Clear old data
+    var clearResp = await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + sid + '/values/' + encodeURIComponent(clearRange) + ':clear',
+      { method: 'POST', headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' } }
+    );
+    if (!clearResp.ok) {
+      var err = await clearResp.json().catch(function(){return {};});
+      throw new Error('Clear failed: ' + (err.error && err.error.message || clearResp.status));
+    }
+
+    showProgress(key, 40);
+    setStatus(key, 'info', 'Writing ' + values.length + ' rows…');
+
+    // Step 2: Write new data
+    var writeUrl = 'https://sheets.googleapis.com/v4/spreadsheets/' + sid
+      + '/values/' + encodeURIComponent(writeRange)
+      + '?valueInputOption=USER_ENTERED';
+
+    var writeResp = await fetch(writeUrl, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: values, majorDimension: 'ROWS' }),
+    });
+    if (!writeResp.ok) {
+      var err2 = await writeResp.json().catch(function(){return {};});
+      throw new Error('Write failed: ' + (err2.error && err2.error.message || writeResp.status));
+    }
+
+    var writeResult = await writeResp.json();
+    showProgress(key, 100);
+    setStatus(key, 'success',
+      '✅ Upload complete — '
+      + (writeResult.updatedRows || values.length) + ' rows written to "'
+      + cfg.label + '". Run the derive step in Apps Script to refresh the dashboard.'
+    );
+    document.getElementById('card-'+key).className = 'dataset-card success';
+    btn.textContent = '✅ Uploaded';
+
+  } catch(e) {
+    showProgress(key, 0);
+    setStatus(key, 'error', '❌ Upload failed: ' + e.message);
+    document.getElementById('card-'+key).className = 'dataset-card error';
+    btn.disabled = false;
+    btn.textContent = '⬆ Retry upload';
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+function setStatus(key, type, msg) {
+  var el = document.getElementById('status-' + key);
+  el.className = 'status-bar' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+function clearStatus(key) { setStatus(key, '', ''); }
+
+function showProgress(key, pct) {
+  var prog    = document.getElementById('prog-' + key);
+  var progbar = document.getElementById('progbar-' + key);
+  prog.style.display = 'block';
+  progbar.style.width = pct + '%';
+  if (pct === 0 || pct === 100) {
+    setTimeout(function(){ prog.style.display = 'none'; }, 800);
+  }
+}
+
+function colLetter(n) {
+  // Convert column number (1-based) to letter(s)
+  var s = '';
+  while (n > 0) { var m = (n-1) % 26; s = String.fromCharCode(65+m) + s; n = Math.floor((n-1)/26); }
+  return s;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Check config on load ───────────────────────────────────────────
+window.addEventListener('load', function() {
+  if (!UPLOADER_CONFIG.oauthClientId || UPLOADER_CONFIG.oauthClientId.includes('PASTE')) {
+    // Allow access without OAuth for testing (no write capability)
+    document.getElementById('signin-btn').onclick = function() {
+      document.getElementById('setup-warning').style.display = 'block';
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('main').style.display = 'block';
+      renderCards();
+    };
+  }
+});
+</script>
+</body>
+</html>
