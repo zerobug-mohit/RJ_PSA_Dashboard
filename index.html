@@ -637,7 +637,11 @@ async function fetchTab(tab) {
     + '/values/' + encodeURIComponent(tab)
     + '?key=' + DASH_CONFIG.apiKey;
   const resp = await fetch(url);
-  if (!resp.ok) throw new Error('Sheets API error for tab "' + tab + '": HTTP ' + resp.status);
+  if (!resp.ok) {
+    let detail = '';
+    try { const e = await resp.json(); detail = e.error ? (' — ' + e.error.message) : ''; } catch(_) {}
+    throw new Error('Sheets API error for tab "' + tab + '": HTTP ' + resp.status + detail);
+  }
   const json = await resp.json();
   return json.values || [];
 }
@@ -805,13 +809,12 @@ async function loadDashboard() {
   if (overlay) overlay.style.display = 'flex';
 
   try {
-    const [plantsVals, onaTLVals, euTLVals, distP1Vals, metaVals] = await Promise.all([
-      fetchTab('plants'),
-      fetchTab('ona_timeline'),
-      fetchTab('eu_timeline'),
-      fetchTab('dist_p1'),
-      fetchTab('meta').catch(function() { return []; }),
-    ]);
+    // Fetch sequentially so any error pinpoints the exact failing tab
+    const plantsVals = await fetchTab('plants');
+    const onaTLVals  = await fetchTab('ona_timeline');
+    const euTLVals   = await fetchTab('eu_timeline');
+    const distP1Vals = await fetchTab('dist_p1');
+    const metaVals   = await fetchTab('meta').catch(function() { return []; });
 
     /* --- plants → RAW.slim_plants --- */
     const pObjs = rowsToObjects(plantsVals);
