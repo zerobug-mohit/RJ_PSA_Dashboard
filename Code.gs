@@ -113,9 +113,14 @@ function fromExcel(serial) {
 }
 
 function fromDMY(str) {
-  if (!str || String(str).trim() === '' || String(str).trim() === '--') return null;
+  if (!str) return null;
+  // Google Sheets getValues() returns Date objects for date-formatted cells
+  // (e.g. e-Upkaran 'Date of Mockdrill', registry 'MOIC Verified Date')
+  if (str instanceof Date) return str;
+  var s = String(str).trim();
+  if (!s || s === '--') return null;
   const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
-  const m = String(str).match(/(\d{1,2})[- ]([A-Za-z]{3})[- ](\d{4})/);
+  const m = s.match(/(\d{1,2})[- ]([A-Za-z]{3})[- ](\d{4})/);
   if (!m) return null;
   const mon = MONTHS[m[2].toLowerCase()];
   if (mon === undefined) return null;
