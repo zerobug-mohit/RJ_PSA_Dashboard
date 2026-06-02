@@ -727,16 +727,10 @@ function writeMeta_(ss, kvs) {
 
 // =====================================================================
 // §6A  WEB APP — on-demand rebuild endpoint
-// Usage: GET <webAppUrl>?token=<webAppToken>
+// Usage: GET <webAppUrl>   (no token required — URL is the secret)
 // =====================================================================
 
 function doGet(e) {
-  const token = (e && e.parameter) ? e.parameter.token : '';
-  if (token !== CONFIG.webAppToken) {
-    return ContentService
-      .createTextOutput(JSON.stringify({ error: 'Unauthorized' }))
-      .setMimeType(ContentService.MimeType.JSON);
-  }
   try {
     const built_at = deriveDashboard();
     return ContentService

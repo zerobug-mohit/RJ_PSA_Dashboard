@@ -979,7 +979,7 @@ async function refreshDashboard() {
   // ── Step 2: fire the Apps Script trigger (no-cors = no CORS headaches) ─
   // no-cors fires the HTTP request to Google's servers regardless of CORS.
   // The Apps Script executes server-side. We verify it ran via built_at polling.
-  const deriveUrl = DASH_CONFIG.deriveWebAppUrl + '?token=' + encodeURIComponent(DASH_CONFIG.deriveToken);
+  const deriveUrl = DASH_CONFIG.deriveWebAppUrl; // no token — URL is the secret
   setMsg('Triggering data pipeline…<br><small style="color:#666;font-weight:400">Step 1 of 2 — rebuilding all Google Sheets data (~15 seconds)</small>');
 
   try {
