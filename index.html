@@ -584,7 +584,7 @@ input[type=date]:focus{outline:none;border-color:#aaa}
 .topbar-right{position:relative}
 </style>
 </head>
-<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tab active" onclick="switchTab(0)">ONA &times; Complaints</div> <div class="tab" onclick="switchTab(1)">e-Upkaran &times; Complaints</div> <div class="tab" onclick="switchTab(2)">QR Code Coverage</div> <div class="tab" onclick="switchTab(3)">Methodology</div> <div class="topbar-right"> <span class="stamp">Data as of 17 Apr 2026 &nbsp;|&nbsp; 471 matched plants</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <div style="position:relative">
+<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tab active" onclick="switchTab(0)">ONA &times; Complaints</div> <div class="tab" onclick="switchTab(1)">e-Upkaran &times; Complaints</div> <div class="tab" onclick="switchTab(2)">QR Code Coverage</div> <div class="tab" onclick="switchTab(3)">Methodology</div> <div class="topbar-right"> <span class="stamp">Data as of 17 Apr 2026 &nbsp;|&nbsp; 471 matched plants</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <span id="dash-ver" style="font-size:9px;color:var(--muted);opacity:0.6">v60e</span> <div style="position:relative">
 <div id="psa-loading-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;font-family:inherit">
   <div style="text-align:center"><div style="font-size:17px;font-weight:600;color:#1a1a2e;margin-bottom:16px">Loading PSA Dashboard…</div><div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top-color:#1a1a2e;border-radius:50%;animation:psa-spin 0.8s linear infinite;margin:0 auto"></div></div></div>
 <style>@keyframes psa-spin{to{transform:rotate(360deg)}}</style>
@@ -943,100 +943,42 @@ async function refreshDashboard() {
   const overlay = document.getElementById('psa-loading-overlay');
   if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
 
-  function setMsg(msg) {
+  function setMsg(line1, line2) {
     if (!overlay) return;
     overlay.style.display = 'flex';
-    overlay.innerHTML = '<div style="text-align:center;max-width:500px;padding:0 24px">'
-      + '<div style="font-size:15px;font-weight:600;color:#1a1a2e;margin-bottom:16px">' + msg + '</div>'
+    overlay.innerHTML = '<div style="text-align:center;max-width:480px;padding:0 24px">'
+      + '<div style="font-size:15px;font-weight:600;color:#1a1a2e;margin-bottom:6px">' + line1 + '</div>'
+      + (line2 ? '<div style="font-size:12px;color:#666;margin-bottom:16px">' + line2 + '</div>' : '<div style="margin-bottom:16px"></div>')
       + '<div style="width:36px;height:36px;border:4px solid #e0e0e0;border-top-color:#1a1a2e;'
       + 'border-radius:50%;animation:psa-spin 0.8s linear infinite;margin:0 auto"></div></div>';
   }
 
-  function showError(html) {
-    if (!overlay) return;
-    overlay.innerHTML = '<div style="background:#fff;border:1px solid #fca5a5;border-radius:10px;'
-      + 'padding:28px 32px;max-width:540px;text-align:left">'
-      + '<div style="font-size:14px;font-weight:700;color:#b91c1c;margin-bottom:12px">⚠ Refresh failed — data not updated</div>'
-      + '<div style="font-size:13px;color:#444;line-height:1.7">' + html + '</div>'
-      + '<button onclick="document.getElementById(\'psa-loading-overlay\').style.display=\'none\'" '
-      + 'style="margin-top:18px;padding:8px 20px;background:#1a1a2e;color:#fff;border:none;'
-      + 'border-radius:6px;cursor:pointer;font-size:13px;display:block">Close — view last known data</button></div>';
-  }
-
-  // ── If no Web App configured, just re-fetch ────────────────────────────
+  // ── If no Web App configured: just re-fetch current data ──────────
   if (!DASH_CONFIG.deriveWebAppUrl || DASH_CONFIG.deriveWebAppUrl === 'PASTE_WEB_APP_URL_HERE') {
-    setMsg('Refreshing dashboard data…');
+    setMsg('Refreshing dashboard…', '');
     await loadDashboard();
     if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
     return;
   }
 
-  // ── Step 1: record current built_at for verification later ────────────
-  let builtAtBefore = null;
-  try {
-    builtAtBefore = metaToObject(await fetchTab('meta')).built_at || null;
-  } catch(_) {}
+  // ── Step 1: trigger the Apps Script via Image tag (no CORS at all) ─
+  setMsg('Step 1 of 2 — Triggering data pipeline…', 'Sending request to Apps Script');
+  await new Promise(function(resolve) {
+    var img = new Image();
+    img.onload = img.onerror = resolve;
+    img.src = DASH_CONFIG.deriveWebAppUrl;
+    setTimeout(resolve, 3000); // move on after 3s regardless
+  });
 
-  // ── Step 2: fire the Apps Script trigger (no-cors = no CORS headaches) ─
-  // no-cors fires the HTTP request to Google's servers regardless of CORS.
-  // The Apps Script executes server-side. We verify it ran via built_at polling.
-  const deriveUrl = DASH_CONFIG.deriveWebAppUrl; // no token — URL is the secret
-  setMsg('Triggering data pipeline…<br><small style="color:#666;font-weight:400">Step 1 of 2 — rebuilding all Google Sheets data (~15 seconds)</small>');
-
-  // Fire the trigger two ways to maximise the chance the Apps Script executes:
-  // 1. no-cors fetch (standard)
-  // 2. Image request (zero CORS restrictions, always reaches the server)
-  const triggerUrl = deriveUrl;
-  try { await fetch(triggerUrl, { mode: 'no-cors', cache: 'no-store' }); } catch(_) {}
-  try {
-    await new Promise(function(resolve) {
-      var img = new Image();
-      img.onload = img.onerror = resolve;
-      img.src = triggerUrl;
-      setTimeout(resolve, 3000);
-    });
-  } catch(_) {}
-
-  // ── Step 3: poll built_at every 3s until it changes (max 35s) ─────────
-  // This tells us the derive actually completed and wrote new data.
-  let builtAtAfter = builtAtBefore;
-  let elapsed = 0;
-  const POLL_INTERVAL = 3000;
-  const MAX_WAIT      = 45000;
-
-  while (elapsed < MAX_WAIT) {
-    await new Promise(r => setTimeout(r, POLL_INTERVAL));
-    elapsed += POLL_INTERVAL;
-    setMsg('Waiting for pipeline to complete… ' + Math.round(elapsed / 1000) + 's'
-      + '<br><small style="color:#666;font-weight:400">Polling for updated data</small>');
-    try {
-      const newBuiltAt = metaToObject(await fetchTab('meta')).built_at || null;
-      if (newBuiltAt && newBuiltAt !== builtAtBefore) {
-        builtAtAfter = newBuiltAt;
-        break; // derive completed — new built_at detected
-      }
-    } catch(_) {}
+  // ── Step 2: wait 25 seconds for the derive to complete (~13s typical) ─
+  var secs = 25;
+  for (var i = secs; i > 0; i--) {
+    setMsg('Step 1 of 2 — Pipeline running…', 'Waiting ' + i + ' more second' + (i === 1 ? '' : 's') + ' for data to update');
+    await new Promise(function(r) { setTimeout(r, 1000); });
   }
 
-  // ── Step 4: if built_at never changed → derive didn't run ─────────────
-  if (builtAtAfter === builtAtBefore) {
-    showError(
-      'The pipeline trigger fired but <code>built_at</code> did not change within 45 seconds.<br>'
-      + '<small style="color:#888">Before: ' + (builtAtBefore || 'unknown') + '</small><br><br>'
-      + '<strong>Quick test:</strong> Open this URL directly in a new browser tab — it should show '
-      + '<code>{"status":"ok","built_at":"..."}</code>:<br>'
-      + '<a href="' + DASH_CONFIG.deriveWebAppUrl + '" target="_blank" style="font-size:11px;word-break:break-all">'
-      + DASH_CONFIG.deriveWebAppUrl + '</a><br><br>'
-      + 'If that shows an error, the Web App needs redeploying:<br>'
-      + '1. Apps Script → <strong>Deploy → Manage deployments → ✏ → New version → Deploy</strong><br>'
-      + '2. Then click <strong>Refresh data</strong> again'
-    );
-    if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
-    return;
-  }
-
-  // ── Step 5: load fresh data ───────────────────────────────────────────
-  setMsg('Loading updated data…<br><small style="color:#666;font-weight:400">Step 2 of 2</small>');
+  // ── Step 3: load fresh data ────────────────────────────────────────
+  setMsg('Step 2 of 2 — Loading updated data…', '');
   await loadDashboard();
   if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
 }
