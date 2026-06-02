@@ -114,17 +114,40 @@ function fromExcel(serial) {
 
 function fromDMY(str) {
   if (!str) return null;
-  // Google Sheets getValues() returns Date objects for date-formatted cells
-  // (e.g. e-Upkaran 'Date of Mockdrill', registry 'MOIC Verified Date')
-  if (str instanceof Date) return str;
+  // Case 1: Sheets getValues() already returned a JS Date object
+  if (str instanceof Date) return isNaN(str.getTime()) ? null : str;
   var s = String(str).trim();
   if (!s || s === '--') return null;
-  const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
-  const m = s.match(/(\d{1,2})[- ]([A-Za-z]{3})[- ](\d{4})/);
-  if (!m) return null;
-  const mon = MONTHS[m[2].toLowerCase()];
-  if (mon === undefined) return null;
-  return new Date(parseInt(m[3], 10), mon, parseInt(m[1], 10));
+
+  // Case 2: ISO format  YYYY-MM-DD  (e.g. from text cells or direct entry)
+  var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    var d = new Date(parseInt(iso[1],10), parseInt(iso[2],10)-1, parseInt(iso[3],10));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  // Case 3: DD-Mon-YYYY  or  DD Mon YYYY  (original Excel format)
+  var MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  var named = s.match(/(\d{1,2})[- ]([A-Za-z]{3,9})[- ](\d{4})/);
+  if (named) {
+    var mon = MONTHS[named[2].slice(0,3).toLowerCase()];
+    if (mon !== undefined) return new Date(parseInt(named[3],10), mon, parseInt(named[1],10));
+  }
+
+  // Case 4: DD/MM/YYYY  (Indian locale entered manually)
+  var slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    var a = parseInt(slash[1],10), b = parseInt(slash[2],10), y = parseInt(slash[3],10);
+    // If first part > 12 it must be day (D/M/Y); otherwise assume D/M/Y (Indian default)
+    var d2 = a > 12
+      ? new Date(y, b-1, a)   // D/M/Y
+      : new Date(y, b-1, a);  // treat as D/M/Y for Indian locale
+    return isNaN(d2.getTime()) ? null : d2;
+  }
+
+  // Case 5: Generic JS Date parse as last resort
+  var d3 = new Date(s);
+  return isNaN(d3.getTime()) ? null : d3;
 }
 
 function toISO(dt) {
@@ -400,6 +423,12 @@ function deriveDashboard() {
   Logger.log('Reading gs_eupkaran…');
   const euRows = readSheetAsObjects(CONFIG.eupkaran, CONFIG.tabs.eupkaran, 3);
   if (euRows.length) Logger.log('EU headers: ' + Object.keys(euRows[0]).filter(function(k) { return !k.startsWith('_col'); }).join(' | '));
+  // Diagnostic: show raw date value from first row to confirm format
+  if (euRows.length > 0) {
+    var sampleDate = euRows[0]['Date of Mockdrill'];
+    Logger.log('EU sample date raw: ' + JSON.stringify(sampleDate) + ' | type: ' + typeof sampleDate + ' | isDate: ' + (sampleDate instanceof Date));
+    Logger.log('EU sample date parsed: ' + toISO(fromDMY(sampleDate)));
+  }
 
   const euParsed = [];
   euRows.forEach(function(r) {
