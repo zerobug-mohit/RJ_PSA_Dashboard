@@ -779,7 +779,104 @@ function doGet(e) {
   }
 }
 
-function doPost(e) { return doGet(e); }
+function doPost(e) {
+  try {
+    var payload = JSON.parse(e.postData.contents);
+
+    // ── Upload action: replace data on a source sheet ──────────────
+    if (payload.action === 'upload') {
+      return handleUpload_(payload);
+    }
+
+    // ── Default: run derive (same as GET) ─────────────────────────
+    var built_at = deriveDashboard();
+    return ContentService
+      .createTextOutput(JSON.stringify({ status: 'ok', built_at: built_at }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: String(err) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ── Upload handler ─────────────────────────────────────────────────
+// Configs for the 4 uploadable source sheets
+var UPLOAD_SHEET_CONFIG_ = {
+  ona: {
+    spreadsheetId: '1VKJL8bqEpiqnMuNsq91sJ4AGzN34xfurabouXS-IpHs',
+    tabName:       'data',
+    bannerRows:    0,
+  },
+  eupkaran: {
+    spreadsheetId: '1_q3eXx0ezZ4L0SybAxlMWuWaSdUlUomDjVf0rBoNX84',
+    tabName:       'sheet1',
+    bannerRows:    3,
+  },
+  complaints: {
+    spreadsheetId: '1jwzifzH5t7lnl9bp_9A64D9E3RvVhuLBa8lmrpwrjHg',
+    tabName:       'Complaints',
+    bannerRows:    0,
+  },
+  registry: {
+    spreadsheetId: '1fnUdcqFIq0xn7zB2YowV0L5ggU6kZ3A0d8d1CTq97CU',
+    tabName:       'sheet1',
+    bannerRows:    3,
+  },
+};
+
+function handleUpload_(payload) {
+  var dataset = payload.dataset;
+  var data    = payload.data;   // array of arrays (header row + data rows)
+
+  var cfg = UPLOAD_SHEET_CONFIG_[dataset];
+  if (!cfg) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: 'Unknown dataset: ' + dataset }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  if (!data || data.length < 2) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: 'No data provided' }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var ss    = SpreadsheetApp.openById(cfg.spreadsheetId);
+  var sheet = ss.getSheetByName(cfg.tabName);
+  if (!sheet) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ error: 'Tab not found: ' + cfg.tabName }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  var chunkIdx = payload.chunk  || 0;   // 0 = first (clear + write), >0 = append
+  var startRow = cfg.bannerRows + 1;
+  var numCols  = data[0].length;
+
+  if (chunkIdx === 0) {
+    // First chunk: clear ALL existing data then write
+    var lastRow = sheet.getLastRow();
+    var lastCol = Math.max(sheet.getLastColumn(), numCols);
+    if (lastRow >= startRow) {
+      sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).clearContent();
+      sheet.getRange(startRow, 1, lastRow - startRow + 1, lastCol).clearFormats();
+    }
+    var range = sheet.getRange(startRow, 1, data.length, numCols);
+    range.setNumberFormat('@');
+    range.setValues(data);
+  } else {
+    // Subsequent chunks: append after existing data
+    var appendRow = sheet.getLastRow() + 1;
+    var range2 = sheet.getRange(appendRow, 1, data.length, numCols);
+    range2.setNumberFormat('@');
+    range2.setValues(data);
+  }
+
+  Logger.log('Upload: wrote ' + data.length + ' rows to ' + cfg.tabName + ' in ' + dataset);
+  return ContentService
+    .createTextOutput(JSON.stringify({ status: 'ok', rows: data.length, tab: cfg.tabName }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
 
 
 // =====================================================================
