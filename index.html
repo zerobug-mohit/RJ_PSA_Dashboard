@@ -632,11 +632,13 @@ var FC  = {};
 async function fetchTab(tab) {
   // No valueRenderOption needed — Code.gs writes all cells as plain text
   // (setNumberFormat('@')), so dates are stored and returned as ISO strings.
+  // &_t= busts browser cache so polling always gets fresh data
   const url = 'https://sheets.googleapis.com/v4/spreadsheets/'
     + DASH_CONFIG.spreadsheetId
     + '/values/' + encodeURIComponent(tab)
-    + '?key=' + DASH_CONFIG.apiKey;
-  const resp = await fetch(url);
+    + '?key=' + DASH_CONFIG.apiKey
+    + '&_t=' + Date.now();
+  const resp = await fetch(url, { cache: 'no-store' });
   if (!resp.ok) {
     let detail = '';
     try { const e = await resp.json(); detail = e.error ? (' — ' + e.error.message) : ''; } catch(_) {}
@@ -982,23 +984,26 @@ async function refreshDashboard() {
   const deriveUrl = DASH_CONFIG.deriveWebAppUrl; // no token — URL is the secret
   setMsg('Triggering data pipeline…<br><small style="color:#666;font-weight:400">Step 1 of 2 — rebuilding all Google Sheets data (~15 seconds)</small>');
 
+  // Fire the trigger two ways to maximise the chance the Apps Script executes:
+  // 1. no-cors fetch (standard)
+  // 2. Image request (zero CORS restrictions, always reaches the server)
+  const triggerUrl = deriveUrl + (deriveUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
+  try { await fetch(triggerUrl, { mode: 'no-cors', cache: 'no-store' }); } catch(_) {}
   try {
-    await fetch(deriveUrl, { mode: 'no-cors' });
-  } catch(_) {
-    // Even no-cors failed — likely network/URL issue
-    showError('Could not reach the Apps Script Web App.<br><br>'
-      + 'Check that <code>DASH_CONFIG.deriveWebAppUrl</code> in <strong>index.html</strong> is correct '
-      + 'and that the Web App is deployed as <em>Anyone can access</em>.');
-    if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
-    return;
-  }
+    await new Promise(function(resolve) {
+      var img = new Image();
+      img.onload = img.onerror = resolve;
+      img.src = triggerUrl;
+      setTimeout(resolve, 3000);
+    });
+  } catch(_) {}
 
   // ── Step 3: poll built_at every 3s until it changes (max 35s) ─────────
   // This tells us the derive actually completed and wrote new data.
   let builtAtAfter = builtAtBefore;
   let elapsed = 0;
   const POLL_INTERVAL = 3000;
-  const MAX_WAIT      = 35000;
+  const MAX_WAIT      = 45000;
 
   while (elapsed < MAX_WAIT) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL));
@@ -1017,14 +1022,15 @@ async function refreshDashboard() {
   // ── Step 4: if built_at never changed → derive didn't run ─────────────
   if (builtAtAfter === builtAtBefore) {
     showError(
-      'The Apps Script pipeline was triggered but the output sheet was <strong>not updated</strong> within 35 seconds.<br><br>'
-      + '<strong>Most likely cause:</strong> The Web App is running an <strong>old version</strong> of Code.gs '
-      + '(deployed before <code>webAppToken</code> was set), so every call is rejected as Unauthorized.<br><br>'
-      + '<strong>Fix (one-time, 2 minutes):</strong><br>'
-      + '1. Open the Apps Script editor<br>'
-      + '2. Paste the latest <strong>Code.gs</strong> from your local folder<br>'
-      + '3. <strong>Deploy → Manage deployments → ✏ pencil → Version: New version → Deploy</strong><br>'
-      + '4. Come back and click <strong>Refresh data</strong> again'
+      'The pipeline trigger fired but <code>built_at</code> did not change within 45 seconds.<br>'
+      + '<small style="color:#888">Before: ' + (builtAtBefore || 'unknown') + '</small><br><br>'
+      + '<strong>Quick test:</strong> Open this URL directly in a new browser tab — it should show '
+      + '<code>{"status":"ok","built_at":"..."}</code>:<br>'
+      + '<a href="' + DASH_CONFIG.deriveWebAppUrl + '" target="_blank" style="font-size:11px;word-break:break-all">'
+      + DASH_CONFIG.deriveWebAppUrl + '</a><br><br>'
+      + 'If that shows an error, the Web App needs redeploying:<br>'
+      + '1. Apps Script → <strong>Deploy → Manage deployments → ✏ → New version → Deploy</strong><br>'
+      + '2. Then click <strong>Refresh data</strong> again'
     );
     if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
     return;
