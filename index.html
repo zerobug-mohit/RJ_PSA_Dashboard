@@ -940,125 +940,99 @@ async function loadDashboard() {
 async function refreshDashboard() {
   const btn     = document.getElementById('psa-refresh-btn');
   const overlay = document.getElementById('psa-loading-overlay');
-
   if (btn) { btn.disabled = true; btn.textContent = '↻ Refreshing…'; }
 
-  function setMsg(msg, spinner) {
+  function setMsg(msg) {
     if (!overlay) return;
     overlay.style.display = 'flex';
-    overlay.innerHTML = `<div style="text-align:center;max-width:480px;padding:0 20px">
-      <div style="font-size:16px;font-weight:600;color:#1a1a2e;margin-bottom:${spinner!==false?'16px':'10px'}">${msg}</div>
-      ${spinner !== false
-        ? `<div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top-color:#1a1a2e;border-radius:50%;animation:psa-spin 0.8s linear infinite;margin:0 auto"></div>`
-        : ''}
-    </div>`;
+    overlay.innerHTML = '<div style="text-align:center;max-width:500px;padding:0 24px">'
+      + '<div style="font-size:15px;font-weight:600;color:#1a1a2e;margin-bottom:16px">' + msg + '</div>'
+      + '<div style="width:36px;height:36px;border:4px solid #e0e0e0;border-top-color:#1a1a2e;'
+      + 'border-radius:50%;animation:psa-spin 0.8s linear infinite;margin:0 auto"></div></div>';
   }
 
-  function showRefreshError(detail) {
+  function showError(html) {
     if (!overlay) return;
-    overlay.innerHTML = `<div style="background:#fff;border:1px solid #fca5a5;border-radius:10px;padding:28px 32px;max-width:520px;text-align:center">
-      <div style="font-size:15px;font-weight:700;color:#b91c1c;margin-bottom:10px">⚠ Refresh failed — data not updated</div>
-      <div style="font-size:13px;color:#555;margin-bottom:16px;line-height:1.6">${detail}</div>
-      <div style="font-size:12px;color:#888;background:#f9fafb;border-radius:6px;padding:10px 14px;text-align:left;line-height:1.7">
-        <strong>To manually trigger a re-derive:</strong><br>
-        1. Open the Apps Script editor<br>
-        2. Select <code>runDerive</code> → click <strong>Run</strong><br>
-        3. Come back and click <strong>Refresh data</strong> again
-      </div>
-      <button onclick="document.getElementById('psa-loading-overlay').style.display='none'"
-        style="margin-top:16px;padding:8px 20px;background:#1a1a2e;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">
-        Close — view last known data
-      </button>
-    </div>`;
+    overlay.innerHTML = '<div style="background:#fff;border:1px solid #fca5a5;border-radius:10px;'
+      + 'padding:28px 32px;max-width:540px;text-align:left">'
+      + '<div style="font-size:14px;font-weight:700;color:#b91c1c;margin-bottom:12px">⚠ Refresh failed — data not updated</div>'
+      + '<div style="font-size:13px;color:#444;line-height:1.7">' + html + '</div>'
+      + '<button onclick="document.getElementById(\'psa-loading-overlay\').style.display=\'none\'" '
+      + 'style="margin-top:18px;padding:8px 20px;background:#1a1a2e;color:#fff;border:none;'
+      + 'border-radius:6px;cursor:pointer;font-size:13px;display:block">Close — view last known data</button></div>';
   }
 
+  // ── If no Web App configured, just re-fetch ────────────────────────────
   if (!DASH_CONFIG.deriveWebAppUrl || DASH_CONFIG.deriveWebAppUrl === 'PASTE_WEB_APP_URL_HERE') {
-    // No Web App configured — just re-fetch whatever is in gs_dashboard_data
     setMsg('Refreshing dashboard data…');
     await loadDashboard();
     if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
     return;
   }
 
-  // ── Step 1: note current built_at so we can verify the derive actually ran ──
+  // ── Step 1: record current built_at for verification later ────────────
   let builtAtBefore = null;
   try {
-    const metaBefore = await fetchTab('meta');
-    const metaObjBefore = metaToObject(metaBefore);
-    builtAtBefore = metaObjBefore.built_at || null;
+    builtAtBefore = metaToObject(await fetchTab('meta')).built_at || null;
   } catch(_) {}
 
-  // ── Step 2: trigger the Apps Script derive step ──────────────────────────
-  setMsg('Rebuilding data from all Google Sheets…<br><span style="font-size:12px;color:#666;font-weight:400">Step 1 of 2 — running derive pipeline (~15 seconds)</span>');
-
+  // ── Step 2: fire the Apps Script trigger (no-cors = no CORS headaches) ─
+  // no-cors fires the HTTP request to Google's servers regardless of CORS.
+  // The Apps Script executes server-side. We verify it ran via built_at polling.
   const deriveUrl = DASH_CONFIG.deriveWebAppUrl + '?token=' + encodeURIComponent(DASH_CONFIG.deriveToken);
-  let deriveOk = false;
-  let deriveError = '';
+  setMsg('Triggering data pipeline…<br><small style="color:#666;font-weight:400">Step 1 of 2 — rebuilding all Google Sheets data (~15 seconds)</small>');
 
   try {
-    // Standard fetch — works when Apps Script CORS headers are correct
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 35000); // 35s timeout
-    const res = await fetch(deriveUrl, { signal: controller.signal });
-    clearTimeout(timer);
-
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json().catch(() => ({}));
-
-    if (json.error) {
-      deriveError = json.error;          // e.g. 'Unauthorized' (token mismatch)
-    } else if (json.status === 'ok') {
-      deriveOk = true;
-    } else {
-      deriveOk = true;                   // no error field = assume ok
-    }
-  } catch (e) {
-    // CORS or network failure — try a no-cors fire-and-forget as fallback
-    try {
-      await fetch(deriveUrl, { mode: 'no-cors' });
-      // Can't read response in no-cors mode, so wait for the derive to finish
-      setMsg('Rebuilding data…<br><span style="font-size:12px;color:#666;font-weight:400">Waiting for pipeline to complete (~15 seconds)</span>');
-      await new Promise(r => setTimeout(r, 18000));
-      deriveOk = true;    // optimistic — will verify via built_at below
-    } catch (e2) {
-      deriveError = 'Could not reach the Apps Script Web App. Check the URL in DASH_CONFIG.deriveWebAppUrl.';
-    }
-  }
-
-  if (deriveError) {
-    let hint = deriveError;
-    if (deriveError.toLowerCase().includes('unauthori')) {
-      hint = `<strong>Token mismatch.</strong> The Apps Script returned "Unauthorized".<br><br>
-        Make sure <code>CONFIG.webAppToken</code> in <strong>Code.gs</strong> matches
-        <code>DASH_CONFIG.deriveToken</code> in <strong>index.html</strong> — both must be
-        <code>'psa-refresh-2026'</code>.<br><br>
-        After fixing, go to Apps Script → <strong>Deploy → Manage deployments → Edit → New version → Deploy</strong>.`;
-    }
-    showRefreshError(hint);
+    await fetch(deriveUrl, { mode: 'no-cors' });
+  } catch(_) {
+    // Even no-cors failed — likely network/URL issue
+    showError('Could not reach the Apps Script Web App.<br><br>'
+      + 'Check that <code>DASH_CONFIG.deriveWebAppUrl</code> in <strong>index.html</strong> is correct '
+      + 'and that the Web App is deployed as <em>Anyone can access</em>.');
     if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
     return;
   }
 
-  // ── Step 3: re-fetch the derived sheet and re-render ────────────────────
-  setMsg('Loading updated data into dashboard…<br><span style="font-size:12px;color:#666;font-weight:400">Step 2 of 2 — fetching new data</span>');
-  await loadDashboard();
+  // ── Step 3: poll built_at every 3s until it changes (max 35s) ─────────
+  // This tells us the derive actually completed and wrote new data.
+  let builtAtAfter = builtAtBefore;
+  let elapsed = 0;
+  const POLL_INTERVAL = 3000;
+  const MAX_WAIT      = 35000;
 
-  // ── Step 4: verify the derive actually changed the data ──────────────────
-  const metaAfter  = await fetchTab('meta').catch(() => []);
-  const builtAtAfter = metaToObject(metaAfter).built_at || null;
+  while (elapsed < MAX_WAIT) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    elapsed += POLL_INTERVAL;
+    setMsg('Waiting for pipeline to complete… ' + Math.round(elapsed / 1000) + 's'
+      + '<br><small style="color:#666;font-weight:400">Polling for updated data</small>');
+    try {
+      const newBuiltAt = metaToObject(await fetchTab('meta')).built_at || null;
+      if (newBuiltAt && newBuiltAt !== builtAtBefore) {
+        builtAtAfter = newBuiltAt;
+        break; // derive completed — new built_at detected
+      }
+    } catch(_) {}
+  }
 
-  if (builtAtBefore && builtAtAfter && builtAtBefore === builtAtAfter) {
-    // built_at did not change — derive didn't run or ran the old version
-    showRefreshError(
-      `The dashboard data was <strong>not updated</strong> — the pipeline ran but the output sheet was not refreshed.<br><br>
-      Most likely cause: the Apps Script Web App is running an <strong>old version</strong> of Code.gs.<br><br>
-      <strong>Fix:</strong> In Apps Script → <strong>Deploy → Manage deployments → click the pencil ✏ →
-      Version: New version → Deploy</strong>. Then try Refresh again.`
+  // ── Step 4: if built_at never changed → derive didn't run ─────────────
+  if (builtAtAfter === builtAtBefore) {
+    showError(
+      'The Apps Script pipeline was triggered but the output sheet was <strong>not updated</strong> within 35 seconds.<br><br>'
+      + '<strong>Most likely cause:</strong> The Web App is running an <strong>old version</strong> of Code.gs '
+      + '(deployed before <code>webAppToken</code> was set), so every call is rejected as Unauthorized.<br><br>'
+      + '<strong>Fix (one-time, 2 minutes):</strong><br>'
+      + '1. Open the Apps Script editor<br>'
+      + '2. Paste the latest <strong>Code.gs</strong> from your local folder<br>'
+      + '3. <strong>Deploy → Manage deployments → ✏ pencil → Version: New version → Deploy</strong><br>'
+      + '4. Come back and click <strong>Refresh data</strong> again'
     );
     if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
     return;
   }
 
+  // ── Step 5: load fresh data ───────────────────────────────────────────
+  setMsg('Loading updated data…<br><small style="color:#666;font-weight:400">Step 2 of 2</small>');
+  await loadDashboard();
   if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
 }
 
