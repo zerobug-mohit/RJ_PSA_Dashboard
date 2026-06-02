@@ -179,10 +179,6 @@ input[type=date]:focus{outline:none;border-color:#aaa}
 .filterbar{background:#fff;border:1px solid var(--border);border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .fl{font-size:11px;color:var(--muted);font-weight:600;white-space:nowrap}
 .filter-sep{width:1px;height:24px;background:var(--border);margin:0 2px}
-/* ---- Department filter select ---- */
-.dept-sel{font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);cursor:pointer;max-width:180px}
-.dept-sel:focus{outline:none;border-color:var(--blue)}
-
 /* ---- Export toolbar ---- */
 .export-toolbar{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:8px;border-top:1px solid var(--border)}
 .export-btn{font-size:10px;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:4px;padding:3px 9px;cursor:pointer;transition:all .12s;line-height:1.4;white-space:nowrap}
@@ -1072,10 +1068,10 @@ function makeFilterBar_(pgIdx) {
   var from     = fromEl ? fromEl.value : '';
   var to       = toEl   ? toEl.value   : '';
 
-  var dept = getDeptFilter(pgIdx);
+  var deptSel = msGet('ms' + pgIdx + 'dept') || [];
   var parts = [];
   if (distSel.length)  parts.push('<strong>District:</strong> ' + distSel.join(', '));
-  if (dept)            parts.push('<strong>Department:</strong> ' + dept);
+  if (deptSel.length)  parts.push('<strong>Department:</strong> ' + deptSel.join(', '));
   if (plantSel.length) {
     var labels = plantSel.map(function(code) {
       var p = (RAW.slim_plants || []).find(function(pl) { return String(pl.c) === code; });
@@ -1148,53 +1144,44 @@ document.addEventListener('mouseover', function(e) {
   if (window.innerHeight - rect.bottom < 220 && rect.top > 120) box.classList.add('above');
 });
 
-/* ---- Department filter injection ---- */
+/* ---- Department multi-select injection (matches District/Plant style) ---- */
 function injectDeptFilters_() {
-  if (document.getElementById('dept-f1')) return; // already injected
+  if (document.getElementById('ms1dept-wrap')) return; // already injected
 
-  // Collect unique non-empty departments from loaded plant data
-  var depts = [];
-  var seen  = {};
-  (RAW.slim_plants || []).forEach(function(p) {
-    if (p.dept && !seen[p.dept]) { seen[p.dept] = 1; depts.push(p.dept); }
-  });
-  depts.sort();
-
-  var opts = '<option value="">All departments</option>'
-    + depts.map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('');
-
-  // Pages: dateInputId → pgIdx
   var pages = [
-    { fromId: 'f1from', pgIdx: '1' },
-    { fromId: 'f2from', pgIdx: '2' },
-    { fromId: 'f3from', pgIdx: '3' },
+    { fromId:'f1from', msId:'ms1dept', pgLabel:'Search department…' },
+    { fromId:'f2from', msId:'ms2dept', pgLabel:'Search department…' },
+    { fromId:'f3from', msId:'ms3dept', pgLabel:'Search department…' },
   ];
 
   pages.forEach(function(pg) {
     var fromEl = document.getElementById(pg.fromId);
     if (!fromEl) return;
-    var bar = fromEl.parentElement; // the filterbar div
+    var bar = fromEl.parentElement;
 
-    // Build: sep | "Department" label | <select>
-    var sep   = document.createElement('div'); sep.className = 'filter-sep';
-    var label = document.createElement('span'); label.className = 'fl'; label.textContent = 'Department';
-    var sel   = document.createElement('select');
-    sel.id        = 'dept-f' + pg.pgIdx;
-    sel.className = 'dept-sel';
-    sel.innerHTML = opts;
-    (function(pgIdx) {
-      sel.addEventListener('change', function() {
-        DEPT_FILTERS[pgIdx] = this.value;
-        if (pgIdx === '1') rp1();
-        else if (pgIdx === '2') rp2();
-        else rp3();
-      });
-    })(pg.pgIdx);
+    // Build the same HTML structure as District/Plant multi-selects
+    var msHtml = '<div class="ms-wrapper" id="' + pg.msId + '-wrap">'
+      + '<div class="ms-trigger" id="' + pg.msId + '-trigger" onclick="msToggle(\'' + pg.msId + '\')">'
+      + '<span id="' + pg.msId + '-label">All departments</span>'
+      + '<span class="ms-count" id="' + pg.msId + '-count" style="display:none">0</span>'
+      + '<span class="ms-arrow">▾</span></div>'
+      + '<div class="ms-panel" id="' + pg.msId + '-panel">'
+      + '<div class="ms-search-wrap"><input class="ms-search" id="' + pg.msId + '-search" placeholder="' + pg.pgLabel + '" oninput="msFilter(\'' + pg.msId + '\')" onclick="event.stopPropagation()"></div>'
+      + '<div class="ms-list" id="' + pg.msId + '-list"></div>'
+      + '<div class="ms-footer"><span class="ms-footer-count" id="' + pg.msId + '-footer"></span>'
+      + '<button class="ms-clear-btn" onclick="msClear(\'' + pg.msId + '\')">Clear all</button></div>'
+      + '</div></div>';
 
-    // Insert before the "From date" element
-    bar.insertBefore(sep,   fromEl.previousElementSibling || fromEl);
-    bar.insertBefore(label, fromEl.previousElementSibling || fromEl);
-    bar.insertBefore(sel,   fromEl.previousElementSibling || fromEl);
+    var sep   = document.createElement('div');   sep.className = 'filter-sep';
+    var label = document.createElement('span');  label.className = 'fl'; label.textContent = 'Department';
+    var wrap  = document.createElement('div');   wrap.innerHTML = msHtml;
+
+    // Insert before the From date label (which is just before fromEl)
+    var fromLabel = fromEl.previousElementSibling;
+    while (fromLabel && fromLabel.nodeType !== 1) fromLabel = fromLabel.previousSibling;
+    bar.insertBefore(sep,              fromLabel || fromEl);
+    bar.insertBefore(label,            fromLabel || fromEl);
+    bar.insertBefore(wrap.firstChild,  fromLabel || fromEl);
   });
 }
 
@@ -1494,17 +1481,14 @@ function dc(id){if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];}}
 
 function fv(id){return document.getElementById(id).value;}
 function clearDates(a,b,fn){document.getElementById(a).value='';document.getElementById(b).value='';fn();}
-var DEPT_FILTERS = {'1':'','2':'','3':''};
-function getDeptFilter(pgIdx){return DEPT_FILTERS[String(pgIdx)]||'';}
-
 function fp(plants,pgIdx){
-  const dSel = msGet('ms'+pgIdx+'d');
-  const pSel = msGet('ms'+pgIdx+'p');
-  const dept = getDeptFilter(pgIdx);
+  const dSel    = msGet('ms'+pgIdx+'d');
+  const pSel    = msGet('ms'+pgIdx+'p');
+  const deptSel = msGet('ms'+pgIdx+'dept');
   return plants.filter(p=>{
-    if(dSel.length && !dSel.includes(p.dd)) return false;
-    if(pSel.length && !pSel.includes(String(p.c))) return false;
-    if(dept && p.dept !== dept) return false;
+    if(dSel.length    && !dSel.includes(p.dd))       return false;
+    if(pSel.length    && !pSel.includes(String(p.c))) return false;
+    if(deptSel.length && !deptSel.includes(p.dept))  return false;
     return true;
   });
 }
@@ -4108,13 +4092,16 @@ function buildPlantOpts(selId, districtVal, currentVal) {
 const MS_STATE = {};
 
 // Config for each dropdown
-const MS_CONFIG = {
-  ms1d: { type:'district', page:'1', onChange: ()=>{ msRebuildPlants('ms1p','ms1d'); rp1(); updateAFB('pg0','1'); } },
-  ms1p: { type:'plant',    page:'1', onChange: ()=>{ rp1(); updateAFB('pg0','1'); } },
-  ms2d: { type:'district', page:'2', onChange: ()=>{ msRebuildPlants('ms2p','ms2d'); rp2(); updateAFB('pg1','2'); } },
-  ms2p: { type:'plant',    page:'2', onChange: ()=>{ rp2(); updateAFB('pg1','2'); } },
-  ms3d: { type:'district', page:'3', onChange: ()=>{ msRebuildPlants('ms3p','ms3d'); rp3(); updateAFB('pg2','3'); } },
-  ms3p: { type:'plant',    page:'3', onChange: ()=>{ rp3(); updateAFB('pg2','3'); } },
+var MS_CONFIG = {
+  ms1d:    { type:'district', page:'1', onChange: ()=>{ msRebuildPlants('ms1p','ms1d'); rp1(); updateAFB('pg0','1'); } },
+  ms1p:    { type:'plant',    page:'1', onChange: ()=>{ rp1(); updateAFB('pg0','1'); } },
+  ms1dept: { type:'dept',     page:'1', onChange: ()=>{ rp1(); updateAFB('pg0','1'); } },
+  ms2d:    { type:'district', page:'2', onChange: ()=>{ msRebuildPlants('ms2p','ms2d'); rp2(); updateAFB('pg1','2'); } },
+  ms2p:    { type:'plant',    page:'2', onChange: ()=>{ rp2(); updateAFB('pg1','2'); } },
+  ms2dept: { type:'dept',     page:'2', onChange: ()=>{ rp2(); updateAFB('pg1','2'); } },
+  ms3d:    { type:'district', page:'3', onChange: ()=>{ msRebuildPlants('ms3p','ms3d'); rp3(); updateAFB('pg2','3'); } },
+  ms3p:    { type:'plant',    page:'3', onChange: ()=>{ rp3(); updateAFB('pg2','3'); } },
+  ms3dept: { type:'dept',     page:'3', onChange: ()=>{ rp3(); updateAFB('pg2','3'); } },
 };
 
 // Get selected values for a dropdown
@@ -4126,17 +4113,38 @@ function msGet(id) {
 var DISTRICTS_SORTED = [];
 var PLANTS_SORTED    = [];
 
+var DEPTS_SORTED = [];
+
 function msInitAll() {
+  // Build sorted department list from loaded plants
+  var deptSeen = {};
+  DEPTS_SORTED = [];
+  (RAW.slim_plants||[]).forEach(function(p){ if(p.dept && !deptSeen[p.dept]){ deptSeen[p.dept]=1; DEPTS_SORTED.push(p.dept); } });
+  DEPTS_SORTED.sort();
+
   Object.keys(MS_CONFIG).forEach(id => {
     MS_STATE[id] = new Set();
     const cfg = MS_CONFIG[id];
     if (cfg.type === 'district') msRenderDistricts(id);
-    if (cfg.type === 'plant') msRenderPlants(id, []);
+    if (cfg.type === 'plant')    msRenderPlants(id, []);
+    if (cfg.type === 'dept')     msRenderDept(id);
   });
   // Init plant lists for each page (no district filter)
   msRebuildPlants('ms1p','ms1d');
   msRebuildPlants('ms2p','ms2d');
   msRebuildPlants('ms3p','ms3d');
+}
+
+function msRenderDept(id) {
+  const list = document.getElementById(id+'-list');
+  if(!list) return;
+  const sel    = MS_STATE[id]||new Set();
+  const search = (document.getElementById(id+'-search')||{}).value||'';
+  const items  = DEPTS_SORTED.filter(d => !search || d.toLowerCase().includes(search.toLowerCase()));
+  list.innerHTML = items.length ? items.map(d => `
+    <label class="ms-item ${sel.has(d)?'selected':''}" onclick="msToggleItem('${id}','${d}',this)"> <input type="checkbox" ${sel.has(d)?'checked':''} onchange="msToggleItem('${id}','${d}',this.closest('.ms-item'))" onclick="event.stopPropagation()"> <span class="ms-item-label">${d}</span> </label>`).join('')
+    : '<div class="ms-empty">No departments found</div>';
+  msUpdateFooter(id, items.length);
 }
 
 function msRenderDistricts(id) {
@@ -4309,10 +4317,7 @@ function clearAllFilters(pgEl) {
   const pgNum = pgEl === 'pg0' ? '1' : pgEl === 'pg1' ? '2' : '3';
   msClear('ms'+pgNum+'d');
   msClear('ms'+pgNum+'p');
-  // clear department filter
-  DEPT_FILTERS[pgNum] = '';
-  var deptEl = document.getElementById('dept-f' + pgNum);
-  if (deptEl) deptEl.value = '';
+  msClear('ms'+pgNum+'dept');
   // clear dates
   if(pgNum==='1'){document.getElementById('f1from').value='';document.getElementById('f1to').value='';rp1();}
   if(pgNum==='2'){document.getElementById('f2from').value='';document.getElementById('f2to').value='';rp2();}
