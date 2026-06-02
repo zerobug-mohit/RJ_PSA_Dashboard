@@ -977,9 +977,23 @@ async function refreshDashboard() {
     await new Promise(function(r) { setTimeout(r, 1000); });
   }
 
-  // ── Step 3: load fresh data ────────────────────────────────────────
-  setMsg('Step 2 of 2 — Loading updated data…', '');
-  await loadDashboard();
+  // ── Step 3: load fresh data and re-render ALL pages ─────────────────
+  setMsg('Step 2 of 2 — Loading updated data…', 'Rebuilding all charts and visualisations');
+  await loadDashboard();   // fetches fresh data + calls initDashboard_() which
+                           // runs rp1(), rp2(), rp3(), tlInit(), fcInit() — all pages
+
+  // Success toast
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);'
+    + 'background:#1D9E75;color:#fff;padding:10px 22px;border-radius:8px;font-size:13px;'
+    + 'font-weight:600;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,0.2);transition:opacity .5s';
+  toast.textContent = '✓ Dashboard refreshed — all charts and visualisations updated';
+  document.body.appendChild(toast);
+  setTimeout(function() {
+    toast.style.opacity = '0';
+    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 600);
+  }, 4000);
+
   if (btn) { btn.disabled = false; btn.textContent = '↺ Refresh data'; }
 }
 
