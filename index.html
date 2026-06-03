@@ -628,6 +628,9 @@ var TL  = {};
 var TL2 = {}; // EU per-plant drill history (mirrors TL for ONA)
 var ONA_ALL_PLANTS  = []; // ALL ONA plant identities — not limited to 441 matched
 var ONA_MONTHLY_ALL = []; // ALL ONA drills aggregated by month+district
+var EU_ALL_PLANTS   = []; // ALL EU plant identities — not limited to 441 matched
+var EU_MONTHLY_ALL  = []; // ALL EU drills aggregated by month+district
+var REGISTRY_ALL    = []; // ALL 515 registry assets for Page 3 funnel
 var FC  = {};
 
 /* ---------- Sheets API v4 fetch ---------- */
@@ -817,9 +820,12 @@ async function loadDashboard() {
     const onaTLVals     = await fetchTab('ona_timeline');
     const euTLVals      = await fetchTab('eu_timeline');
     const distP1Vals    = await fetchTab('dist_p1');
-    const onaAllVals    = await fetchTab('ona_all_plants').catch(function(){ return []; });
-    const onaMonthVals  = await fetchTab('ona_monthly_all').catch(function(){ return []; });
-    const metaVals      = await fetchTab('meta').catch(function() { return []; });
+    const onaAllVals      = await fetchTab('ona_all_plants').catch(function(){ return []; });
+    const onaMonthVals    = await fetchTab('ona_monthly_all').catch(function(){ return []; });
+    const euAllVals       = await fetchTab('eu_all_plants').catch(function(){ return []; });
+    const euMonthVals     = await fetchTab('eu_monthly_all').catch(function(){ return []; });
+    const registryVals    = await fetchTab('registry_plants').catch(function(){ return []; });
+    const metaVals        = await fetchTab('meta').catch(function() { return []; });
 
     /* --- plants → RAW.slim_plants --- */
     const pObjs = rowsToObjects(plantsVals);
@@ -906,6 +912,51 @@ async function loadDashboard() {
         p: r.purity !== '' ? +r.purity : null,
         s: +r.status,
       });
+    });
+
+    /* --- EU_ALL_PLANTS: all EU plant identities --- */
+    EU_ALL_PLANTS = rowsToObjects(euAllVals).map(function(r) {
+      return {
+        dd:   r.district  || '',
+        sf:   r.hospital  || '',
+        co:   r.capacity  !== '' ? +r.capacity : null,
+        es:   r.latest_status  || '',
+        ep:   r.latest_purity  !== '' ? +r.latest_purity  : null,
+        epr:  r.latest_hours   !== '' ? +r.latest_hours   : null,
+        ed:   normDate_(r.latest_date) || null,
+        el:   isTruthy(r.eu_leakage),
+        ef:   r.eu_fire_safety || '',
+        cnt:  +r.drill_count || 0,
+        // Safe defaults for fields not available for unmatched plants
+        c: null, dept: '', ct: 0, ha: false, cl: [], hq: false, iv: false,
+      };
+    });
+
+    /* --- EU_MONTHLY_ALL: all EU drills by month+district --- */
+    EU_MONTHLY_ALL = rowsToObjects(euMonthVals).map(function(r) {
+      return {
+        m:    r.month    || '',
+        dist: r.district || '',
+        tot:  +r.total   || 0,
+        f:    +r.functional     || 0,
+        n:    +r.not_functional || 0,
+        avgP: r.avg_purity !== '' ? +r.avg_purity : null,
+      };
+    });
+
+    /* --- REGISTRY_ALL: all 515 registry assets for Page 3 funnel --- */
+    REGISTRY_ALL = rowsToObjects(registryVals).map(function(r) {
+      return {
+        dd:  r.district          || '',
+        sf:  r.hospital          || '',
+        cs:  r.capacity !== '' ? +r.capacity : null,
+        eq:  r.qr_suffix         || '',
+        hq:  isTruthy(r.has_qr),
+        sei: r.equipment_status  || '',
+        sii: r.inventory_status  || '',
+        smd: normDate_(r.moic_verified_date) || null,
+        iv:  isTruthy(r.is_verified),
+      };
     });
 
     /* --- FC (complaints analysis) --- */
@@ -2334,71 +2385,81 @@ function rp2(){
   const cfrom=null, cto=null;
   const euDateLabel = euFrom||euTo ? ` — ${euFrom||'start'} to ${euTo||'today'}` : ' — May 2025 to Apr 2026 (all)';
   const cDateLabel  = ' — Aug 2024 to Apr 2026 (all)';
+  const selDist2 = msGet('ms2d');
+  const selDistStr2 = selDist2[0] || '';
 
-  let baseps=fp(RAW.slim_plants,'2').filter(p=>{
-    if(!p.es)return false;
-    // EU drill date filter
-    if(euFrom&&(!p.ed||p.ed<euFrom))return false;
-    if(euTo&&(!p.ed||p.ed>euTo))return false;
+  // ── EU-ONLY data: ALL EU plants (not capped to 441 matched) ─────────────
+  const euAll = EU_ALL_PLANTS.filter(function(p) {
+    if (selDist2.length && !selDist2.includes(p.dd)) return false;
+    if (euFrom && (!p.ed || p.ed < euFrom)) return false;
+    if (euTo   && (!p.ed || p.ed > euTo))   return false;
     return true;
   });
-  let ps = baseps.map(p=>withMetrics(p, cfrom, cto));
-  const N=ps.length;
-  const func=ps.filter(p=>p.es==='Functional');
-  const fi=ps.filter(p=>p.es==='Functional Installed');
-  const inc=ps.filter(p=>p.es==='In Complaint');
-  const nfr=ps.filter(p=>p.es==='Non Functional Repairable');
-  const nf=[...inc,...nfr];
-  const gp=ps.filter(p=>p.ep&&p.ep>=93);
-  const nr=ps.filter(p=>p.epr===0);
-  const act=ps.filter(p=>p.ha);
-  const rcomp=ps.filter(p=>p.ar);
-  const avgRes=avg(rcomp.map(p=>p.ar));
-  const avgResp=avg(ps.filter(p=>p.asp).map(p=>p.asp));
-  const avgRep=avg(ps.filter(p=>p.arep).map(p=>p.arep));
-  const avgVer=avg(ps.filter(p=>p.av).map(p=>p.av));
+  const euFunc = euAll.filter(function(p){ return p.es==='Functional'; });
+  const euFI   = euAll.filter(function(p){ return p.es==='Functional Installed'; });
+  const euInc  = euAll.filter(function(p){ return p.es==='In Complaint'; });
+  const euNFR  = euAll.filter(function(p){ return p.es==='Non Functional Repairable'; });
+  const euNF   = euInc.length + euNFR.length;
+  const euGP   = euAll.filter(function(p){ return p.ep != null && p.ep >= 93; });
+  const euNR   = euAll.filter(function(p){ return p.ep === 0 || (p.epr === 0 && p.ep === 0); });
 
+  // ── CROSS-SOURCE data: 441 matched plants (EU + Complaints linked) ───────
+  const baseps = fp(RAW.slim_plants,'2').filter(function(p){
+    if (!p.es) return false;
+    if (euFrom && (!p.ed || p.ed < euFrom)) return false;
+    if (euTo   && (!p.ed || p.ed > euTo))   return false;
+    return true;
+  });
+  const ps = baseps.map(function(p){ return withMetrics(p, cfrom, cto); });
+  const matchedN2 = ps.length;
+  const act = ps.filter(function(p){ return p.ha; });
+  const rcomp = ps.filter(function(p){ return p.ar; });
+  const avgRes = avg(rcomp.map(function(p){ return p.ar; }));
+
+  // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('k2').innerHTML=[
-    kc('Total EU plants',N,'With e-Upkaran mock-drill data','',
-      'Count of perfectly matched plants that have at least one e-Upkaran mock-drill record on record. No date filter.',
-      'All time — no date filter'),
-    kc('Functional',func.length,pct(func.length,N),'g',
-      'Plants where the most recent e-Upkaran mock-drill has Equipment Status = Functional. Filtered by EU drill date range above.',
+    kc('Total EU plants', euAll.length, 'All e-Upkaran submissions', '',
+      'Total unique PSA plant identities found in ALL e-Upkaran drill data (not limited to registry-matched plants).',
+      'All EU drills — no registry match required'),
+    kc('Functional', euFunc.length, pct(euFunc.length, euAll.length), 'g',
+      'Plants where latest e-Upkaran status = Functional. From ALL EU data.',
       'EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('Functional installed',fi.length,pct(fi.length,N),'b',
-      'Plants where the latest e-Upkaran status = Functional Installed. Physically installed but may have pending configuration.',
+    kc('Functional Installed', euFI.length, pct(euFI.length, euAll.length), 'b',
+      'Plants where latest e-Upkaran status = Functional Installed.',
       'EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('In complaint / NF repairable',nf.length,pct(nf.length,N),'r',
-      'Plants where the latest e-Upkaran status = In Complaint or Non Functional Repairable.',
+    kc('In Complaint / NF Repairable', euNF, pct(euNF, euAll.length), 'r',
+      'Plants where latest e-Upkaran status = In Complaint or Non Functional Repairable.',
       'EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('Purity ≥ 93%',gp.length,pct(gp.length,N),'g',
-      'Plants where the latest e-Upkaran purity reading is ≥ 93% (WHO standard). Plants with purity = 0 and running hours = 0 are excluded.',
+    kc('Purity ≥ 93%', euGP.length, pct(euGP.length, euAll.length), 'g',
+      'Plants with latest EU purity ≥ 93% (WHO standard). From ALL EU data.',
       'EU drill date filter'+euDateLabel,'m-purity'),
-    kc('Purity = 0 (not running)',nr.length,'Excluded from purity averages','a',
-      'Plants where purity = 0 in the latest e-Upkaran drill — plant was not operational at time of drill. Excluded from all purity calculations.',
+    kc('Purity = 0 (not running)', euNR.length, 'Excluded from averages', 'a',
+      'Plants where purity = 0 at time of drill — not running. From ALL EU data.',
       'EU drill date filter'+euDateLabel,'m-purity'),
-    kc('Active complaint',act.length,pct(act.length,N),'r',
-      'Plants with at least one complaint unresolved (status ≠ Resolved) within the complaint date range.',
-      'Complaint date filter'+cDateLabel,'m-complaints'),
-    kc('Avg resolution time',avgRes?avgRes+'d':'—','Resolved complaints','',
-      'Mean of total resolution time (raise → MOIC close) for resolved complaints within the complaint date range.',
+    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' matched', 'r',
+      'Plants with unresolved complaint. Limited to '+matchedN2+' plants matched between EU and the complaints registry.',
+      'Complaint date filter'+cDateLabel+' · '+matchedN2+' matched plants','m-complaints'),
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN2+' matched', '',
+      'Mean raise→MOIC resolution days. Based on '+matchedN2+' registry-matched plants.',
       'Complaint date filter'+cDateLabel,'m-resolution'),
   ].join('');
 
-  const euDrillPeriod = euFrom||euTo ? `EU drill: ${euFrom||'start'} → ${euTo||'today'}` : 'EU drill: May 2025 – Apr 2026 (all time)';
-  const cPeriod2 = cfrom||cto ? `Complaints: ${cfrom||'start'} → ${cto||'today'}` : 'Complaints: Aug 2024 – Apr 2026 (all time)';
-  setPeriod('p2tl-period', euDrillPeriod);
-  setPeriod('p2fc-period', cPeriod2);
-  setPeriod('p2pur-period', euDrillPeriod);
-  setPeriod('p2disc-period', `${euDrillPeriod} · ${cPeriod2}`);
+  const euDrillPeriod = euFrom||euTo ? `EU drill: ${euFrom||'start'} → ${euTo||'today'}` : 'EU drill: May 2025 – Apr 2026 (ALL EU plants)';
+  const cPeriod2 = `${matchedN2} matched plants · Complaints: Aug 2024 – Apr 2026`;
+  setPeriod('p2tl-period',   euDrillPeriod);
+  setPeriod('p2fc-period',   cPeriod2);
+  setPeriod('p2pur-period',  euDrillPeriod);
+  setPeriod('p2disc-period', euDrillPeriod + ' · ' + cPeriod2);
 
-  const p2AllowedCodes = new Set(baseps.map(p=>String(p.c)));
-  eutlDraw(msGet('ms2d')[0]||'', '', euFrom, euTo, msGet('ms2p')[0]||'');
-  eufcDraw(msGet('ms2d')[0]||'', null, null, '', euFrom, euTo, p2AllowedCodes);
-  pur2Draw(msGet('ms2d')[0]||'', '', euFrom, euTo, msGet('ms2p')[0]||'');
-
-  // Discrepancy table: ONA ≠ EU — use baseps (already district+plant+date filtered)
-  euIntelDraw(baseps);
+  const p2AllowedCodes = new Set(baseps.map(function(p){ return String(p.c); }));
+  // EU timeline uses ALL EU data via EU_MONTHLY_ALL
+  eutlApplyAllEU(selDistStr2, euFrom, euTo);
+  // eufc widget uses only matched plants (cross-source)
+  eufcDraw(selDistStr2, null, null, '', euFrom, euTo, p2AllowedCodes);
+  // EU purity uses ALL EU data
+  pur2DrawAllEU(selDistStr2, euFrom, euTo);
+  // EU Intelligence uses ALL EU plants
+  euIntelDraw(euAll);
   updateChartFilterBars_(2);
 }
 
@@ -2649,6 +2710,133 @@ function _euIntelRenderDetail(body, ps) {
 }
 /* ===================== END EU INTELLIGENCE WIDGET ===================== */
 
+/* ── EU timeline using ALL EU drills (EU_MONTHLY_ALL) ── */
+function eutlApplyAllEU(dist, euFrom, euTo) {
+  eutlDistFilter = dist || '';
+  eutlEuFrom = euFrom || null;
+  eutlEuTo   = euTo   || null;
+  if (eutlMode === 'overview') eutlDrawAllEU();
+}
+
+function eutlDrawAllEU() {
+  eutlMode = 'overview';
+  const container = document.getElementById('eutl-container');
+  const barH = 180, barW = 38, gap = 6;
+
+  let rows = EU_MONTHLY_ALL;
+  if (eutlDistFilter) rows = rows.filter(function(r){ return r.dist === eutlDistFilter; });
+  if (eutlEuFrom) rows = rows.filter(function(r){ return r.m >= eutlEuFrom.slice(0,7); });
+  if (eutlEuTo)   rows = rows.filter(function(r){ return r.m <= eutlEuTo.slice(0,7); });
+
+  const byM = {};
+  rows.forEach(function(r) {
+    if (!byM[r.m]) byM[r.m] = { f:0, n:0 };
+    byM[r.m].f += r.f;
+    byM[r.m].n += r.n;
+  });
+
+  const months = Object.keys(byM).sort();
+  if (!months.length) {
+    container.innerHTML = '<div style="padding:20px;color:var(--muted);font-size:12px">No EU drill data for selected filters.</div>';
+    return;
+  }
+  const totalW = months.length * (barW + gap);
+  let bars = '';
+  months.forEach(function(mo, i) {
+    const d = byM[mo], total = d.f+d.n, x = i*(barW+gap);
+    const fH = total ? Math.round((d.f/total)*barH) : 0;
+    const nH = barH - fH;
+    const pctF = total ? Math.round(d.f/total*100) : 0, pctN = 100-pctF;
+    const fLbl = fH>=26?`<text x="${x+barW/2}" y="${barH-fH/2-4}" text-anchor="middle" font-size="8" font-weight="700" fill="white" pointer-events="none">${d.f}</text><text x="${x+barW/2}" y="${barH-fH/2+7}" text-anchor="middle" font-size="7" fill="white" opacity="0.85" pointer-events="none">(${pctF}%)</text>`:'';
+    const nLbl = nH>=26?`<text x="${x+barW/2}" y="${nH/2-4}" text-anchor="middle" font-size="8" font-weight="700" fill="white" pointer-events="none">${d.n}</text><text x="${x+barW/2}" y="${nH/2+7}" text-anchor="middle" font-size="7" fill="white" opacity="0.85" pointer-events="none">(${pctN}%)</text>`:'';
+    bars += `<g class="tl-bar" style="cursor:pointer" onclick="eutlClickMonth('${mo}')" role="button" tabindex="0">
+      <title>${eutlMonthLabel(mo)} — ${d.f} Functional (${pctF}%), ${d.n} Non-Functional · ALL EU drills</title>
+      <rect x="${x}" y="${nH}" width="${barW}" height="${fH}" fill="#1D9E75" rx="2"/>
+      <rect x="${x}" y="0" width="${barW}" height="${nH}" fill="#E24B4A" rx="2"/>
+      ${fLbl}${nLbl}
+      <text x="${x+barW/2}" y="${barH+14}" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.6">${eutlMonthLabel(mo)}</text>
+      <rect x="${x}" y="0" width="${barW}" height="${barH}" fill="transparent" class="tl-hover"/>
+    </g>`;
+  });
+  container.innerHTML = `<svg viewBox="0 -10 ${totalW} ${barH+30}" width="100%" style="max-height:220px;display:block">
+    <style>.tl-bar:hover .tl-hover{fill:rgba(0,0,0,0.06)}</style>${bars}</svg>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px">
+      Showing ALL e-Upkaran drill submissions · Drill-down shows registry-matched plants only
+    </div>`;
+}
+
+/* ── EU purity trend using ALL EU drills (EU_MONTHLY_ALL) ── */
+function pur2DrawAllEU(dist, euFrom, euTo) {
+  pur2Mode = 'overview';
+  document.getElementById('pur2-breadcrumb').style.display = 'none';
+  document.getElementById('pur2-title').textContent = 'Purity trend — e-Upkaran drills';
+
+  const container = document.getElementById('pur2-container');
+  let rows = EU_MONTHLY_ALL;
+  if (dist) rows = rows.filter(function(r){ return r.dist === dist; });
+  if (euFrom) rows = rows.filter(function(r){ return r.m >= euFrom.slice(0,7); });
+  if (euTo)   rows = rows.filter(function(r){ return r.m <= euTo.slice(0,7); });
+
+  const byM = {};
+  rows.forEach(function(r) {
+    if (!byM[r.m]) byM[r.m] = { sumP:0, cntP:0 };
+    if (r.avgP != null && r.f > 0) { byM[r.m].sumP += r.avgP * r.f; byM[r.m].cntP += r.f; }
+  });
+  const months = Object.keys(byM).sort();
+  const mData = months.map(function(m) {
+    const s = byM[m];
+    return { m:m, avg: s.cntP>0 ? Math.round((s.sumP/s.cntP)*10)/10 : null };
+  }).filter(function(d){ return d.avg != null; });
+
+  if (mData.length < 2) {
+    container.innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;font-size:12px">No EU purity data available.</div>';
+    return;
+  }
+
+  const PAD={t:18,r:32,b:36,l:48};
+  const W=Math.max(680,mData.length*44+PAD.l+PAD.r), H=180;
+  const cW=W-PAD.l-PAD.r, cH=H-PAD.t-PAD.b;
+  const minY=60, maxY=102;
+  function yPx(v){ return PAD.t+cH*(1-(v-minY)/(maxY-minY)); }
+  function xPx(i){ return PAD.l+(mData.length<2?cW/2:(i/(mData.length-1))*cW); }
+
+  const linePts = mData.map(function(d,i){ return `${xPx(i).toFixed(1)},${yPx(d.avg).toFixed(1)}`; }).join(' ');
+  const areaPath = `M${xPx(0).toFixed(1)},${yPx(mData[0].avg).toFixed(1)} `
+    + mData.map(function(d,i){ return `L${xPx(i).toFixed(1)},${yPx(d.avg).toFixed(1)}`; }).join(' ')
+    + ` L${xPx(mData.length-1).toFixed(1)},${yPx(minY).toFixed(1)} L${xPx(0).toFixed(1)},${yPx(minY).toFixed(1)} Z`;
+  const y90=yPx(90).toFixed(1), y93=yPx(93).toFixed(1);
+  const step=Math.max(1,Math.ceil(mData.length/8));
+  const xLabels=mData.map(function(d,i){
+    if(i%step!==0&&i!==mData.length-1) return '';
+    const[yr,mo2]=d.m.split('-');
+    return `<text x="${xPx(i).toFixed(1)}" y="${(H-PAD.b+14).toFixed(1)}" text-anchor="middle" font-size="7" fill="var(--muted)" opacity="0.7">${['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo2]} ${yr.slice(2)}</text>`;
+  }).join('');
+  const dots=mData.map(function(d,i){
+    const c=pur2Color(d.avg);
+    return `<circle cx="${xPx(i).toFixed(1)}" cy="${yPx(d.avg).toFixed(1)}" r="4.5" fill="${c}" stroke="var(--card)" stroke-width="1.5" style="cursor:pointer" onclick="pur2ClickMonth('${d.m}')" title="${d.m}: avg ${d.avg}% · ALL EU drills"/>
+      <rect x="${(xPx(i)-10).toFixed(1)}" y="${PAD.t}" width="20" height="${cH}" fill="transparent" style="cursor:pointer" onclick="pur2ClickMonth('${d.m}')"/>`;
+  }).join('');
+
+  const vals=mData.map(function(d){return d.avg;}), last=mData[mData.length-1];
+  const overallAvg=(vals.reduce(function(s,v){return s+v;},0)/vals.length).toFixed(1);
+  const chips=`<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+    <div style="font-size:11px;color:var(--muted)">Overall avg <strong style="color:${pur2Color(+overallAvg)}">${overallAvg}%</strong></div>
+    <div style="font-size:11px;color:var(--muted)">Latest: <strong style="color:${pur2Color(last.avg)}">${last.avg}%</strong></div>
+    <div style="font-size:10px;color:var(--muted);align-self:center">ALL EU drills · click a dot to see matched plants</div>
+  </div>`;
+
+  container.innerHTML = chips + `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;overflow:visible">
+    <line x1="${PAD.l}" y1="${y90}" x2="${PAD.l+cW}" y2="${y90}" stroke="#EF9F27" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+    <text x="${PAD.l+cW+2}" y="${(+y90+3).toFixed(1)}" font-size="7" fill="#EF9F27" opacity="0.8">90%</text>
+    <line x1="${PAD.l}" y1="${y93}" x2="${PAD.l+cW}" y2="${y93}" stroke="#1D9E75" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+    <text x="${PAD.l+cW+2}" y="${(+y93+3).toFixed(1)}" font-size="7" fill="#1D9E75" opacity="0.8">93%</text>
+    <path d="${areaPath}" fill="#378ADD" opacity="0.10"/>
+    <polyline points="${linePts}" fill="none" stroke="#378ADD" stroke-width="2.2" stroke-linejoin="round"/>
+    <line x1="${PAD.l}" y1="${PAD.t}" x2="${PAD.l}" y2="${PAD.t+cH}" stroke="var(--border)" stroke-width="1"/>
+    ${xLabels}${dots}
+  </svg>`;
+}
+
 /* ===================== EU TIMELINE WIDGET (mirrors tl*) ===================== */
 let eutlMode='overview', eutlActiveMonth=null, eutlDistFilter='';
 let eutlStatusFilter='', eutlEuFrom=null, eutlEuTo=null, eutlPlantFilter='';
@@ -2761,6 +2949,7 @@ function eutlDrawPlant(p){
           Complaints: <b>${cl.length}</b> &nbsp;|&nbsp;
           Leak: <b>${p.el?'Yes':'No'}</b> &nbsp;|&nbsp; Fire: <b>${fireLabel}</b> </div> </div> </div> <div style="overflow-x:auto;margin-top:12px;max-height:260px;overflow-y:auto"> <table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Raised</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Status</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Response</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Repair</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Verify</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Total</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Downtime</th> </tr></thead><tbody>${compRows}</tbody></table></div>`;
 }
+function eutlInit() { eutlDrawAllEU(); } // uses ALL EU drills via EU_MONTHLY_ALL
 // =================== END EU TIMELINE WIDGET ===================
 
 /* ===================== EU FC WIDGET — exact P1 FC mirror ===================== */
@@ -3276,14 +3465,19 @@ function rp3(){
   const drillFrom=fv('f3from')||null, drillTo=fv('f3to')||null;
   const drillDateLabel = drillFrom||drillTo ? ` — ${drillFrom||'start'} to ${drillTo||'today'}` : ' — May 2025 to Apr 2026 (all)';
 
-  let ps=fp(RAW.slim_plants,'3').filter(p=>{
-    return true;
+  // ── Registry funnel top: ALL registry assets (not capped to 441 matched) ──
+  const selDist3 = msGet('ms3d');
+  const regAll = REGISTRY_ALL.filter(function(p) {
+    return !selDist3.length || selDist3.includes(p.dd);
   });
-  const N=ps.length;
-  const hasQR=ps.filter(p=>p.hq);
-  const noQR=ps.filter(p=>!p.hq);
-  const verified=ps.filter(p=>p.iv&&p.hq);
-  const unverified=ps.filter(p=>!p.iv&&p.hq);
+  const N        = regAll.length;
+  const hasQR    = regAll.filter(function(p){ return p.hq; });
+  const noQR     = regAll.filter(function(p){ return !p.hq; });
+  const verified  = regAll.filter(function(p){ return p.iv && p.hq; });
+  const unverified= regAll.filter(function(p){ return !p.iv && p.hq; });
+
+  // ── Reporting status: from matched plants only (EU drill linkage requires mapping) ──
+  let ps=fp(RAW.slim_plants,'3').filter(function(p){ return true; });
 
   // Reporting: apply drill date filter
   const repRecent=ps.filter(p=>{
@@ -3305,20 +3499,20 @@ function rp3(){
   const pctRep=verified.length?Math.round(displayRep.length/verified.length*100):0;
 
   document.getElementById('k3').innerHTML=[
-    kc('Total matched plants',N,'In registry','',
-      'Total count of perfectly matched plants across all datasets. No date filter or status filter applied.',
-      'All matched plants — no filter'),
-    kc('Has QR code',hasQR.length,pct(hasQR.length,N),'',
-      'Plants where the Stock on Hand record has a valid QR code assigned. Without a QR code a plant cannot be tracked in e-Upkaran.',
+    kc('Total in registry', N, 'All '+N+' PSA assets in Stock on Hand', '',
+      'Total PSA plant assets in the Stock on Hand registry. This is the full registry count — not limited to mapping-matched plants.',
+      'Stock on Hand registry — ALL assets'),
+    kc('Has QR code', hasQR.length, pct(hasQR.length,N), '',
+      'Registry assets with a valid QR code assigned. Without a QR code a plant cannot be tracked in e-Upkaran.',
       'Stock on Hand — as of data extract'),
-    kc('No QR code',noQR.length,pct(noQR.length,N)+' — cannot track in e-Upkaran','a',
-      'Plants with no QR code in Stock on Hand. Cannot participate in mock-drill reporting.',
+    kc('No QR code', noQR.length, pct(noQR.length,N)+' — cannot track in e-Upkaran', 'a',
+      'Registry assets with no QR code. Cannot participate in mock-drill reporting.',
       'Stock on Hand — as of data extract'),
-    kc('Verified inventory (with QR)',verified.length,pct(verified.length,hasQR.length)+' of QR plants','',
-      'Plants where Inventory Status = Verified Inventory — MOIC has physically confirmed the asset entry.',
+    kc('Verified inventory (with QR)', verified.length, pct(verified.length,hasQR.length)+' of QR assets', '',
+      'Assets where Inventory Status = Verified Inventory — MOIC has physically confirmed the asset.',
       'Stock on Hand — as of data extract','m-qr-coverage'),
-    kc('Unverified (with QR)',unverified.length,pct(unverified.length,hasQR.length),'a',
-      'Plants with a QR code but Inventory Status = New Inventory or Added By Service Provider — not yet MOIC-verified.',
+    kc('Unverified (with QR)', unverified.length, pct(unverified.length,hasQR.length), 'a',
+      'Assets with a QR code but not yet MOIC-verified.',
       'Stock on Hand — as of data extract','m-qr-coverage'),
     kc('Verified + reporting',displayRep.length,pct(displayRep.length,verified.length)+' of verified','g',
       drillFrom||drillTo

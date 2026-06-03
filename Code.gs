@@ -258,6 +258,25 @@ function deriveDashboard() {
   });
   Logger.log('Registry: ' + regRows.length + ' rows | ' + Object.keys(byDHC).length + ' DHC keys | ' + Object.keys(byQR).length + ' QR keys');
 
+  // BUILD registry_plants tab — ALL 515 assets for Page 3 funnel
+  const registryPlantsHeaders = ['district','hospital','capacity','qr_suffix','has_qr','equipment_status','inventory_status','moic_verified_date','is_verified'];
+  const registryPlantsRows = regRows.map(function(r) {
+    var qr  = qrSuffix(r['QR Code'] || r['_col4'] || '');
+    var sii = String(r['Inventory Status'] || r['_col7'] || '').trim();
+    return [
+      districtDisplay(r['District Name'] || r['_col1'] || ''),
+      String(r['Hospital Name'] || r['_col2'] || '').trim(),
+      parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col9'] || '') || '',
+      qr,
+      qr ? 'true' : 'false',
+      String(r['Equipment Status'] || r['_col8'] || '').trim(),
+      sii,
+      toISO(fromDMY(r['MOIC Verified Date'] || r['_col6'] || '')),
+      (sii === 'Verified Inventory') ? 'true' : 'false',
+    ];
+  });
+  Logger.log('Registry all-plants: ' + registryPlantsRows.length + ' rows');
+
   // ------------------------------------------------------------------
   // STEP B — Mapping Code → registry asset
   // ------------------------------------------------------------------
@@ -557,6 +576,56 @@ function deriveDashboard() {
   const unmatchedD = Object.keys(codeMap).filter(function(code) { return !euDrillsByCode[code]; });
   Logger.log('Step D: ' + matchedDIdents.size + ' identities matched | ' + unmatchedD.length + ' codes have no EU drill (reporting gap — expected)');
 
+  // BUILD eu_all_plants — ALL EU drills, one row per unique district+hospital+cap identity
+  const euAllByIdent = {};
+  euParsed.forEach(function(d) {
+    const key = d.distNorm + '|' + d.hospNorm + '|' + (d.cap != null ? d.cap : '');
+    if (!euAllByIdent[key]) {
+      euAllByIdent[key] = { drills: [], distDisplay: districtDisplay(d.distNorm), hosp: d.hospNorm, cap: d.cap };
+    }
+    euAllByIdent[key].drills.push(d);
+  });
+  const euAllPlantsHeaders = ['district','hospital','capacity','latest_status','latest_purity','latest_hours','latest_date','eu_leakage','eu_fire_safety','drill_count'];
+  const euAllPlantsRows = Object.values(euAllByIdent).map(function(g) {
+    var sorted = g.drills.filter(function(d){ return d.date; }).sort(function(a,b){ return a.date > b.date ? -1 : 1; });
+    var latest = sorted[0] || g.drills[0];
+    return [
+      g.distDisplay,
+      g.hosp,
+      g.cap != null ? g.cap : '',
+      latest ? latest.es  : '',
+      latest && latest.ep  != null ? Number(latest.ep).toFixed(1)  : '',
+      latest && latest.epr != null ? Number(latest.epr).toFixed(1) : '',
+      latest ? latest.ed  : '',
+      latest ? String(latest.el) : '',
+      latest ? latest.ef  : '',
+      g.drills.length,
+    ];
+  });
+  Logger.log('EU all-plants: ' + euAllPlantsRows.length + ' unique identities');
+
+  // BUILD eu_monthly_all — ALL EU drills aggregated by month+district
+  const euMonthMap = {};
+  euParsed.forEach(function(d) {
+    if (!d.ed) return;
+    var m    = d.ed.slice(0, 7);
+    var dist = districtDisplay(d.distNorm);
+    var key  = m + '|' + dist;
+    if (!euMonthMap[key]) euMonthMap[key] = { month: m, district: dist, total: 0, f: 0, n: 0, purs: [] };
+    euMonthMap[key].total++;
+    if (d.es === 'Functional' || d.es === 'Functional Installed') euMonthMap[key].f++;
+    else euMonthMap[key].n++;
+    if (d.ep != null && d.ep > 0) euMonthMap[key].purs.push(d.ep);
+  });
+  const euMonthlyHeaders = ['month','district','total','functional','not_functional','avg_purity'];
+  const euMonthlyRows = Object.values(euMonthMap).sort(function(a,b) {
+    return (a.month+'|'+a.district) < (b.month+'|'+b.district) ? -1 : 1;
+  }).map(function(s) {
+    var avgP = s.purs.length ? (s.purs.reduce(function(a,b){return a+b;},0)/s.purs.length).toFixed(1) : '';
+    return [s.month, s.district, s.total, s.f, s.n, avgP];
+  });
+  Logger.log('EU monthly-all: ' + euMonthlyRows.length + ' month×district rows');
+
   // ------------------------------------------------------------------
   // STEP E — Complaints → Code via QR → registry
   // ------------------------------------------------------------------
@@ -747,15 +816,22 @@ function deriveDashboard() {
   const onaTimelineHeaders = ['code','district','facility','capacity','date','purity','status'];
 
   // ------------------------------------------------------------------
-  // BUILD eu_timeline ROWS  (§5.3)
+  // BUILD eu_timeline ROWS — ALL EU drills (matched + unmatched)
+  // Matched plants use integer code; unmatched use synthetic "V0","V1",…
   // ------------------------------------------------------------------
+  const matchedEUDrillSet = new Set();
+  Object.values(euDrillsByCode).forEach(function(drills) {
+    drills.forEach(function(d) { matchedEUDrillSet.add(d); });
+  });
+
+  // Matched EU drills
   Object.keys(euDrillsByCode).forEach(function(code) {
     const cm = codeMap[code];
     euDrillsByCode[code].forEach(function(d) {
       euTimeline.push([
         code,
-        cm ? cm.dd   : '',
-        cm ? cm.sf   : '',
+        cm ? cm.dd : '',
+        cm ? cm.sf : '',
         cm ? (cm.cs != null ? cm.cs : '') : '',
         d.ed,
         d.ep != null ? Number(d.ep).toFixed(2) : '',
@@ -763,6 +839,27 @@ function deriveDashboard() {
       ]);
     });
   });
+
+  // Unmatched EU drills — synthetic codes (V prefix to distinguish from ONA's U prefix)
+  const unmatchedEUSynCodes = {};
+  var vIdx = 0;
+  euParsed.forEach(function(d) {
+    if (matchedEUDrillSet.has(d)) return;
+    const identKey = d.distNorm + '|' + d.hospNorm + '|' + (d.cap != null ? d.cap : '');
+    if (!unmatchedEUSynCodes[identKey]) {
+      unmatchedEUSynCodes[identKey] = 'V' + (vIdx++);
+    }
+    euTimeline.push([
+      unmatchedEUSynCodes[identKey],
+      districtDisplay(d.distNorm),
+      d.hospNorm,
+      d.cap != null ? d.cap : '',
+      d.ed,
+      d.ep != null ? Number(d.ep).toFixed(2) : '',
+      (d.es === 'Functional' || d.es === 'Functional Installed') ? 1 : 0,
+    ]);
+  });
+
   const euTimelineHeaders = ['code','district','facility','capacity','date','purity','status'];
 
   // ------------------------------------------------------------------
@@ -796,12 +893,15 @@ function deriveDashboard() {
   Logger.log('Writing gs_dashboard_data…');
   const dashSS = SpreadsheetApp.openById(CONFIG.dashboard);
 
-  writeTab_(dashSS, 'plants',          plantHeaders,       plantRows);
-  writeTab_(dashSS, 'ona_timeline',    onaTimelineHeaders, onaTimeline);
-  writeTab_(dashSS, 'eu_timeline',     euTimelineHeaders,  euTimeline);
-  writeTab_(dashSS, 'dist_p1',         distP1Headers,      distP1Rows);
-  writeTab_(dashSS, 'ona_all_plants',  onaAllPlantsHeaders, onaAllPlantsRows);
-  writeTab_(dashSS, 'ona_monthly_all', onaMonthlyHeaders,  onaMonthlyRows);
+  writeTab_(dashSS, 'plants',            plantHeaders,          plantRows);
+  writeTab_(dashSS, 'ona_timeline',      onaTimelineHeaders,    onaTimeline);
+  writeTab_(dashSS, 'eu_timeline',       euTimelineHeaders,     euTimeline);
+  writeTab_(dashSS, 'dist_p1',           distP1Headers,         distP1Rows);
+  writeTab_(dashSS, 'ona_all_plants',    onaAllPlantsHeaders,   onaAllPlantsRows);
+  writeTab_(dashSS, 'ona_monthly_all',   onaMonthlyHeaders,     onaMonthlyRows);
+  writeTab_(dashSS, 'eu_all_plants',     euAllPlantsHeaders,    euAllPlantsRows);
+  writeTab_(dashSS, 'eu_monthly_all',    euMonthlyHeaders,      euMonthlyRows);
+  writeTab_(dashSS, 'registry_plants',   registryPlantsHeaders, registryPlantsRows);
 
   const builtAt = new Date().toISOString();
   writeMeta_(dashSS, {
