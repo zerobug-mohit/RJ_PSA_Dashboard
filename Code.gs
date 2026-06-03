@@ -695,14 +695,25 @@ function deriveDashboard() {
 
   // ------------------------------------------------------------------
   // BUILD ona_timeline ROWS  (§5.3)
+  // Includes ALL ONA drills — matched plants use their integer code;
+  // unmatched plants get a stable synthetic string code ("U0", "U1", …).
+  // This allows drill-downs to show every ONA plant, not just 441 matched.
   // ------------------------------------------------------------------
+
+  // Step 1: collect all drills belonging to matched plants (by reference)
+  const matchedDrillSet = new Set();
+  Object.values(onaDrillsByCode).forEach(function(drills) {
+    drills.forEach(function(d) { matchedDrillSet.add(d); });
+  });
+
+  // Step 2: write matched-plant drills (existing logic)
   Object.keys(onaDrillsByCode).forEach(function(code) {
     const cm = codeMap[code];
     onaDrillsByCode[code].forEach(function(d) {
       onaTimeline.push([
         code,
-        cm ? cm.dd   : '',
-        cm ? cm.sf   : '',
+        cm ? cm.dd : '',
+        cm ? cm.sf : '',
         cm ? (cm.cs != null ? cm.cs : '') : '',
         d.od,
         d.op != null ? Number(d.op).toFixed(2) : '',
@@ -710,6 +721,29 @@ function deriveDashboard() {
       ]);
     });
   });
+
+  // Step 3: write unmatched-plant drills with synthetic codes
+  // Group unmatched drills by plant identity so all drills for the same
+  // plant share one synthetic code → purity trend shows full history.
+  const unmatchedSynCodes = {};
+  var uIdx = 0;
+  onaParsed.forEach(function(d) {
+    if (matchedDrillSet.has(d)) return;
+    const identKey = d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '');
+    if (!unmatchedSynCodes[identKey]) {
+      unmatchedSynCodes[identKey] = 'U' + (uIdx++);
+    }
+    onaTimeline.push([
+      unmatchedSynCodes[identKey],
+      districtDisplay(d.distNorm),
+      d.facNorm,
+      d.lpm != null ? d.lpm : '',
+      d.od,
+      d.op != null ? Number(d.op).toFixed(2) : '',
+      d.os === 'Functional' || d.os === 'Functional Installed' ? 1 : 0,
+    ]);
+  });
+
   const onaTimelineHeaders = ['code','district','facility','capacity','date','purity','status'];
 
   // ------------------------------------------------------------------

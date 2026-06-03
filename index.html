@@ -2193,9 +2193,13 @@ function purClickPlant(code) {
   const ph = TL.history[String(code)];
   if (!ph) return;
   document.getElementById('pur-breadcrumb').style.display = 'inline-flex';
-  const bcMonth = purClickedMonth ? ` / ${purClickedMonth.replace('-','/')}` : '';
-  document.getElementById('pur-bc-text').textContent = `${bcMonth} / #${ph.code||code} ${ph.fa.slice(0,28)}`;
-  document.getElementById('pur-title').textContent = `#${ph.code||code} ${ph.fa} (${ph.di})`;
+  const bcMonth  = purClickedMonth ? ` / ${purClickedMonth.replace('-','/')}` : '';
+  const isMatched = !String(code).startsWith('U');
+  const plantLabel = isMatched ? `#${code} ${ph.fa.slice(0,28)}` : ph.fa.slice(0,35) + ' (unmatched)';
+  document.getElementById('pur-bc-text').textContent = `${bcMonth} / ${plantLabel}`;
+  document.getElementById('pur-title').textContent   = isMatched
+    ? `#${code} ${ph.fa} (${ph.di})`
+    : `${ph.fa} — ${ph.di} (ONA only — not in registry)`;
   purDrawPlant(code, ph);
 }
 
@@ -3876,45 +3880,74 @@ function tlClickMonth(ym) {
 
 function tlDrawMonth(ym) {
   const container=document.getElementById('tl-container');
-  
-  // Get all plants that had a drill in this month
+
+  // Get ALL plants (matched + unmatched) that had a drill in this month
   const plantDrills=[];
   for(const [code,v] of Object.entries(TL.history)) {
     if(tlDistrictFilter && v.di!==tlDistrictFilter) continue;
-    if(tlAllowedCodes && !tlAllowedCodes.has(code)) continue;
     const drills=v.h.filter(h=>h.d&&h.d.startsWith(ym)&&(!tlFromD||h.d>=tlFromD)&&(!tlToD||h.d<=tlToD));
     if(drills.length===0) continue;
-    // last status for that month
     const last=drills[drills.length-1];
-    plantDrills.push({code,district:v.di,facility:v.fa,cap:v.ca,drills,lastStatus:last.s,lastPurity:last.p});
+    const isMatched = !String(code).startsWith('U');
+    plantDrills.push({code,district:v.di,facility:v.fa,cap:v.ca,drills,lastStatus:last.s,lastPurity:last.p,isMatched});
   }
-  
-  // Sort: NF first, then by facility name
+
   plantDrills.sort((a,b)=>a.lastStatus-b.lastStatus||a.facility.localeCompare(b.facility));
-  
+
   if(plantDrills.length===0){
     container.innerHTML='<div style="padding:20px;color:var(--muted);font-size:12px">No drills recorded for this month.</div>';
     return;
   }
-  
-  // Build table-style rows
+
+  const matchedCount   = plantDrills.filter(p=>p.isMatched).length;
+  const unmatchedCount = plantDrills.length - matchedCount;
+
   let rows='';
   plantDrills.forEach(p=>{
-    const statusBg=p.lastStatus===1?'#1D9E75':'#E24B4A';
-    const statusTxt=p.lastStatus===1?'Functional':'Not-Functional';
-    const purityTxt=p.lastPurity!=null?`${p.lastPurity}%`:'—';
-    const nDrills=p.drills.length;
-    // dots for each drill that month
+    const statusBg  = p.lastStatus===1?'#1D9E75':'#E24B4A';
+    const statusTxt = p.lastStatus===1?'Functional':'Not-Functional';
+    const purityTxt = p.lastPurity!=null?`${p.lastPurity}%`:'—';
+    const nDrills   = p.drills.length;
+    const codeBadge = p.isMatched
+      ? `<span style="font-size:10px;color:var(--muted);font-family:monospace">#${p.code}</span>`
+      : `<span style="font-size:9px;background:#f1f5f9;color:#64748b;padding:1px 4px;border-radius:3px;font-family:monospace">ONA only</span>`;
     let dots='';
     p.drills.forEach(h=>{
       const col=h.s===1?'#1D9E75':'#E24B4A';
-      const tip=`${h.d} | ${h.s===1?'Functional':'Not-Functional'}${h.p?` | Purity: ${h.p}%`:''}`+(h.r?` | ${h.r}`:'');
+      const tip=`${h.d} | ${h.s===1?'Functional':'Not-Functional'}${h.p?` | Purity: ${h.p}%`:''}`;
       dots+=`<span title="${tip}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:3px;cursor:default;vertical-align:middle"></span>`;
     });
-    rows+=`<tr style="cursor:pointer" onclick="tlClickPlant('${p.code}')"> <td style="font-size:11px;color:var(--muted)">${p.district}</td> <td style="font-size:12px">${p.facility.slice(0,35)} <span style="font-size:10px;color:var(--muted);font-family:monospace">#${p.code}</span></td> <td style="font-size:11px;text-align:center">${p.cap}</td> <td><span style="background:${statusBg};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${statusTxt}</span></td> <td style="font-size:11px;text-align:center">${purityTxt}</td> <td style="font-size:11px;text-align:center">${nDrills}</td> <td>${dots}</td> </tr>`;
+    rows+=`<tr style="cursor:pointer" onclick="tlClickPlant('${p.code}')">
+      <td style="font-size:11px;color:var(--muted)">${p.district}</td>
+      <td style="font-size:12px">${p.facility.slice(0,35)} ${codeBadge}</td>
+      <td style="font-size:11px;text-align:center">${p.cap||'—'}</td>
+      <td><span style="background:${statusBg};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${statusTxt}</span></td>
+      <td style="font-size:11px;text-align:center">${purityTxt}</td>
+      <td style="font-size:11px;text-align:center">${nDrills}</td>
+      <td>${dots}</td>
+    </tr>`;
   });
-  
-  container.innerHTML=`<div style="overflow-x:auto"> <table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Status</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Purity</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Drills</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Drill dots (hover for detail)</th> </tr></thead> <tbody id="tl-month-rows">${rows}</tbody> </table> </div>`;
+
+  const unmatchedNote = unmatchedCount > 0
+    ? `<div style="font-size:11px;color:#64748b;padding:6px 8px;background:#f8fafc;border-top:1px solid var(--border)">
+        <strong>${matchedCount}</strong> registry-matched plants · <strong>${unmatchedCount}</strong> ONA-only plants (not in registry — no complaint data)
+       </div>` : '';
+
+  container.innerHTML=`<div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th>
+        <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th>
+        <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th>
+        <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Status</th>
+        <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Purity</th>
+        <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Drills</th>
+        <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Drill dots</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${unmatchedNote}
+  </div>`;
 }
 
 function tlClickPlant(code) {
