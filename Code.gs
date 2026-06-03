@@ -376,6 +376,65 @@ function deriveDashboard() {
   });
   Logger.log('ONA: ' + onaParsed.length + ' parsed drills');
 
+  // ------------------------------------------------------------------
+  // BUILD ona_all_plants  (ALL ONA drills — not limited to 441 matched)
+  // Groups by unique district+facility+lpm identity; keeps latest drill.
+  // ------------------------------------------------------------------
+  const onaAllByIdent = {}; // "distNorm|facNorm|lpm" → {drills[], distDisplay, osc, lpm}
+  onaParsed.forEach(function(d) {
+    const key = d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '');
+    if (!onaAllByIdent[key]) {
+      onaAllByIdent[key] = { drills: [], distDisplay: districtDisplay(d.distNorm), osc: d.osc, lpm: d.lpm, facNorm: d.facNorm };
+    }
+    onaAllByIdent[key].drills.push(d);
+    if (!onaAllByIdent[key].osc && d.osc) onaAllByIdent[key].osc = d.osc;
+  });
+
+  const onaAllPlantsHeaders = ['district','facility','scheme','capacity','latest_status','latest_purity','latest_date','nf_reason','drill_count'];
+  const onaAllPlantsRows = Object.values(onaAllByIdent).map(function(g) {
+    var sorted = g.drills.filter(function(d){return d.date;}).sort(function(a,b){return a.date > b.date ? -1 : 1;});
+    var latest = sorted[0] || g.drills[0];
+    return [
+      g.distDisplay,
+      g.facNorm,
+      g.osc || '',
+      g.lpm != null ? g.lpm : '',
+      latest ? latest.os  : '',
+      latest && latest.op != null ? Number(latest.op).toFixed(1) : '',
+      latest ? latest.od  : '',
+      latest ? latest.or_ : '',
+      g.drills.length,
+    ];
+  });
+  Logger.log('ONA all-plants: ' + onaAllPlantsRows.length + ' unique identities');
+
+  // ------------------------------------------------------------------
+  // BUILD ona_monthly_all  (ALL ONA drills aggregated by month+district)
+  // Used for ONA timeline and purity overview — not limited to 441 matched.
+  // ------------------------------------------------------------------
+  const onaMonthMap = {}; // "month|district" → {total, f, n, purs:[]}
+  onaParsed.forEach(function(d) {
+    if (!d.od) return;
+    var m    = d.od.slice(0, 7);
+    var dist = districtDisplay(d.distNorm);
+    var key  = m + '|' + dist;
+    if (!onaMonthMap[key]) onaMonthMap[key] = { month: m, district: dist, total: 0, f: 0, n: 0, purs: [] };
+    onaMonthMap[key].total++;
+    if (d.os === 'Functional' || d.os === 'Functional Installed') onaMonthMap[key].f++;
+    else onaMonthMap[key].n++;
+    if (d.op != null) onaMonthMap[key].purs.push(d.op);
+  });
+
+  const onaMonthlyHeaders = ['month','district','total','functional','not_functional','avg_purity'];
+  const onaMonthlyRows = Object.values(onaMonthMap).sort(function(a,b) {
+    var ka = a.month + '|' + a.district, kb = b.month + '|' + b.district;
+    return ka < kb ? -1 : 1;
+  }).map(function(s) {
+    var avgP = s.purs.length ? (s.purs.reduce(function(a,b){return a+b;},0)/s.purs.length).toFixed(1) : '';
+    return [s.month, s.district, s.total, s.f, s.n, avgP];
+  });
+  Logger.log('ONA monthly-all: ' + onaMonthlyRows.length + ' month×district rows');
+
   const onaDrillsByCode = {}; // code → [drill]
   const onaTimeline     = []; // flat rows for ona_timeline tab
   var matchedC = 0;
@@ -703,10 +762,12 @@ function deriveDashboard() {
   Logger.log('Writing gs_dashboard_data…');
   const dashSS = SpreadsheetApp.openById(CONFIG.dashboard);
 
-  writeTab_(dashSS, 'plants',        plantHeaders,       plantRows);
-  writeTab_(dashSS, 'ona_timeline',  onaTimelineHeaders, onaTimeline);
-  writeTab_(dashSS, 'eu_timeline',   euTimelineHeaders,  euTimeline);
-  writeTab_(dashSS, 'dist_p1',       distP1Headers,      distP1Rows);
+  writeTab_(dashSS, 'plants',          plantHeaders,       plantRows);
+  writeTab_(dashSS, 'ona_timeline',    onaTimelineHeaders, onaTimeline);
+  writeTab_(dashSS, 'eu_timeline',     euTimelineHeaders,  euTimeline);
+  writeTab_(dashSS, 'dist_p1',         distP1Headers,      distP1Rows);
+  writeTab_(dashSS, 'ona_all_plants',  onaAllPlantsHeaders, onaAllPlantsRows);
+  writeTab_(dashSS, 'ona_monthly_all', onaMonthlyHeaders,  onaMonthlyRows);
 
   const builtAt = new Date().toISOString();
   writeMeta_(dashSS, {
@@ -714,10 +775,11 @@ function deriveDashboard() {
     coverage_B:   resolvedB + '/' + totalB,
     coverage_D:   matchedDIdents.size + ' identities',
     coverage_E:   matchedE + '/' + totalE,
-    plant_count:  plantRows.length,
-    ona_drills:   onaTimeline.length,
-    eu_drills:    euTimeline.length,
-    misses_B:     missesB.length,
+    plant_count:      plantRows.length,
+    ona_drills:       onaTimeline.length,
+    ona_all_plants:   onaAllPlantsRows.length,
+    eu_drills:        euTimeline.length,
+    misses_B:         missesB.length,
   });
 
   const elapsed = ((new Date() - t0) / 1000).toFixed(1);

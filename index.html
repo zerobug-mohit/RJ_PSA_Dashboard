@@ -626,6 +626,8 @@ const DASH_CONFIG = {
 var RAW = {};
 var TL  = {};
 var TL2 = {}; // EU per-plant drill history (mirrors TL for ONA)
+var ONA_ALL_PLANTS  = []; // ALL ONA plant identities — not limited to 441 matched
+var ONA_MONTHLY_ALL = []; // ALL ONA drills aggregated by month+district
 var FC  = {};
 
 /* ---------- Sheets API v4 fetch ---------- */
@@ -811,11 +813,13 @@ async function loadDashboard() {
 
   try {
     // Fetch sequentially so any error pinpoints the exact failing tab
-    const plantsVals = await fetchTab('plants');
-    const onaTLVals  = await fetchTab('ona_timeline');
-    const euTLVals   = await fetchTab('eu_timeline');
-    const distP1Vals = await fetchTab('dist_p1');
-    const metaVals   = await fetchTab('meta').catch(function() { return []; });
+    const plantsVals    = await fetchTab('plants');
+    const onaTLVals     = await fetchTab('ona_timeline');
+    const euTLVals      = await fetchTab('eu_timeline');
+    const distP1Vals    = await fetchTab('dist_p1');
+    const onaAllVals    = await fetchTab('ona_all_plants').catch(function(){ return []; });
+    const onaMonthVals  = await fetchTab('ona_monthly_all').catch(function(){ return []; });
+    const metaVals      = await fetchTab('meta').catch(function() { return []; });
 
     /* --- plants → RAW.slim_plants --- */
     const pObjs = rowsToObjects(plantsVals);
@@ -907,8 +911,42 @@ async function loadDashboard() {
     /* --- FC (complaints analysis) --- */
     buildFC_();
 
+    /* --- ONA_ALL_PLANTS: all ONA plant identities (not limited to 441 matched) --- */
+    ONA_ALL_PLANTS = rowsToObjects(onaAllVals).map(function(r) {
+      return {
+        dd:   r.district  || '',
+        sf:   r.facility  || '',   // normalized facility name from ONA
+        osc:  r.scheme    || '',
+        co:   r.capacity  !== '' ? +r.capacity : null,
+        os:   r.latest_status  || '',
+        op:   r.latest_purity  !== '' ? +r.latest_purity  : null,
+        od:   normDate_(r.latest_date) || null,
+        or_:  r.nf_reason || '',
+        cnt:  +r.drill_count || 0,
+        // Fields not available for unmatched plants — set safe defaults
+        c: null, dept: '', ct: 0, ha: false, cl: [], hq: false, iv: false,
+        re: false, rr: false, ds: null,
+      };
+    });
+
+    /* --- ONA_MONTHLY_ALL: all ONA drills aggregated by month+district --- */
+    ONA_MONTHLY_ALL = rowsToObjects(onaMonthVals).map(function(r) {
+      return {
+        m:    r.month    || '',
+        dist: r.district || '',
+        tot:  +r.total   || 0,
+        f:    +r.functional     || 0,
+        n:    +r.not_functional || 0,
+        avgP: r.avg_purity !== '' ? +r.avg_purity : null,
+      };
+    });
+
     /* --- DISTRICTS_SORTED / PLANTS_SORTED (re-assign globals) --- */
-    DISTRICTS_SORTED = RAW.districts.slice().sort();
+    // Build district list from ALL ONA districts + matched plants (union)
+    var allDistricts = {};
+    RAW.slim_plants.forEach(function(p){ if(p.dd) allDistricts[p.dd]=1; });
+    ONA_ALL_PLANTS.forEach(function(p){ if(p.dd) allDistricts[p.dd]=1; });
+    DISTRICTS_SORTED = Object.keys(allDistricts).sort();
     PLANTS_SORTED    = RAW.slim_plants.slice().sort(function(a, b) { return a.c - b.c; });
 
     /* --- Stamp update --- */
@@ -1547,71 +1585,84 @@ function goMeth(anchor){
 function rp1(){
   const fromD = fv('f1from')||null;
   const toD   = fv('f1to')||null;
-  const baseps = fp(RAW.slim_plants,'1').filter(p=>p.os);
-  const ps = baseps.map(p=>withMetrics(p, fromD, toD));
   const dateLabel = fromD||toD ? ` — ${fromD||'start'} to ${toD||'today'}` : ' — Aug 2024 to Apr 2026 (all time)';
-  const N=ps.length;
-  const func=ps.filter(p=>p.os==='Functional');
-  const nfunc=ps.filter(p=>p.os==='Not-Functional');
-  const wc=ps.filter(p=>p.ct>0);
-  const dfo=ps.filter(p=>p.os==='Functional'&&p.ha);
-  const dnf=ps.filter(p=>p.os==='Not-Functional'&&p.ct===0);
-  const rcomp=ps.filter(p=>p.ar);
-  const avgRes=avg(rcomp.map(p=>p.ar));
-  const fp2=func.filter(p=>p.op&&p.op>0);
-  const avgPur=avg(fp2.map(p=>p.op));
-  const resp=avg(ps.filter(p=>p.asp).map(p=>p.asp));
-  const rep=avg(ps.filter(p=>p.arep).map(p=>p.arep));
-  const ver=avg(ps.filter(p=>p.av).map(p=>p.av));
 
+  // ── ONA-ONLY data: uses ALL ONA plants (not limited to 441 matched) ──────
+  // Filter by district/dept from current filter selections
+  const selDist = msGet('ms1d');
+  const selDept = msGet('ms1dept');
+  const onaAll  = ONA_ALL_PLANTS.filter(function(p) {
+    if (selDist.length && !selDist.includes(p.dd)) return false;
+    if (selDept.length && p.dept && !selDept.includes(p.dept)) return false;
+    return true;
+  });
+  const onaFunc  = onaAll.filter(function(p){ return p.os === 'Functional'; });
+  const onaNF    = onaAll.filter(function(p){ return p.os === 'Not-Functional'; });
+  const onaPurs  = onaFunc.filter(function(p){ return p.op && p.op > 0; });
+  const avgPurAll = onaPurs.length ? avg(onaPurs.map(function(p){ return p.op; })) : null;
+  const onaPur0  = onaAll.filter(function(p){ return p.op === 0 || (p.op == null && p.od); });
+
+  // ── CROSS-SOURCE data: only 441 matched plants (ONA linked with Complaints) ─
+  const baseps = fp(RAW.slim_plants,'1').filter(function(p){ return p.os; });
+  const ps = baseps.map(function(p){ return withMetrics(p, fromD, toD); });
+  const matchedN  = ps.length;
+  const wc  = ps.filter(function(p){ return p.ct > 0; });
+  const dfo = ps.filter(function(p){ return p.os==='Functional' && p.ha; });
+  const dnf = ps.filter(function(p){ return p.os==='Not-Functional' && p.ct===0; });
+  const rcomp = ps.filter(function(p){ return p.ar; });
+  const avgRes = avg(rcomp.map(function(p){ return p.ar; }));
+
+  // ── KPIs — ONA-only (left group) and cross-source (right group) ───────────
   document.getElementById('k1').innerHTML=[
-    kc('Total ONA plants',N,'Plants found reporting in ONA','',
-      'Count of perfectly matched plants that have at least one ONA mock-drill submission on record.',
-      'All time — no date filter'),
-    kc('Functional (ONA)',func.length,pct(func.length,N),'g',
-      'Plants where the most recent ONA mock-drill submission recorded status = Functional. One drill per plant — the latest by submission timestamp.',
-      'Latest drill per plant — dataset covers all time','m-ona-status'),
-    kc('Non-functional (ONA)',nfunc.length,pct(nfunc.length,N),'r',
-      'Plants where the most recent ONA mock-drill submission recorded status = Not-Functional. One drill per plant — the latest by submission timestamp.',
-      'Latest drill per plant — dataset covers all time','m-ona-status'),
-    kc('Plants with ≥1 complaint',wc.length,pct(wc.length,N),'',
-      'Plants that have at least one complaint raised within the selected date range. Use the complaint date filter above to restrict to a specific period.',
-      'Complaint date filter'+dateLabel,'m-complaints'),
-    kc('Functional + open complaint',dfo.length,'Discrepancy flag','a',
-      'Plants where latest ONA status = Functional AND at least one complaint within the date range is currently unresolved. Flags cases where field says working but a complaint is still open.',
-      'ONA: latest drill. Complaints'+dateLabel,'m-discrepancy'),
-    kc('Non-functional, no complaint',dnf.length,'Gap — no complaint raised','r',
-      'Plants where latest ONA status = Not-Functional AND zero complaints have been raised within the selected date range. Broken plants with no complaint on record.',
-      'ONA: latest drill. Complaints'+dateLabel,'m-discrepancy'),
-    kc('Avg resolution time',avgRes?avgRes+'d':'—','Resolved complaints','',
-      'Mean of total resolution time (raise → MOIC close) for all resolved complaints within the date range. Only complaints with a valid MOIC close date are included.',
-      'Resolved complaints'+dateLabel,'m-resolution'),
-    kc('Avg purity — functional plants',avgPur?avgPur+'%':'—','Mean of ONA readings',avgPur>=93?'g':avgPur>=85?'a':'r',
-      'Mean purity across functional plants, where purity = average of up to 3 readings from the latest ONA mock-drill. Plants with zero purity readings are excluded. WHO threshold for medical-grade oxygen = 93%.',
-      'Latest drill per plant — no date filter','m-purity'),
+    // ONA-only KPIs — full ONA dataset
+    kc('Total ONA plants', onaAll.length, 'All ONA mock-drill submissions', '',
+      'Total unique PSA plant identities found in ALL ONA mock-drill data (not limited to registry-matched plants). Filtered by current district/department selection.',
+      'All ONA drills — no registry match required'),
+    kc('Functional (ONA)', onaFunc.length, pct(onaFunc.length, onaAll.length), 'g',
+      'Plants where the most recent ONA drill recorded status = Functional. Drawn from ALL ONA data.',
+      'Latest drill per ONA plant identity', 'm-ona-status'),
+    kc('Non-functional (ONA)', onaNF.length, pct(onaNF.length, onaAll.length), 'r',
+      'Plants where the most recent ONA drill recorded status = Not-Functional. Drawn from ALL ONA data.',
+      'Latest drill per ONA plant identity', 'm-ona-status'),
+    kc('Avg purity — functional', avgPurAll ? avgPurAll+'%' : '—', 'Mean of ONA readings', avgPurAll>=93?'g':avgPurAll>=85?'a':'r',
+      'Mean purity across all functional ONA plants with a valid purity reading (>0%). WHO threshold = 93%.',
+      'All ONA drills — no registry match required', 'm-purity'),
+    // Cross-source KPIs — 441 matched plants only
+    kc('Plants with ≥1 complaint', wc.length, pct(wc.length, matchedN)+'  of '+matchedN+' matched', '',
+      'Plants with at least one complaint in the selected date range. Limited to '+matchedN+' plants that are matched between ONA and the complaints registry.',
+      'Complaint date filter'+dateLabel+' · '+matchedN+' matched plants', 'm-complaints'),
+    kc('Functional + open complaint', dfo.length, 'Discrepancy — '+matchedN+' matched', 'a',
+      'Functional (ONA) plants with an unresolved complaint. Based on '+matchedN+' registry-matched plants only.',
+      'ONA latest drill · Complaints'+dateLabel, 'm-discrepancy'),
+    kc('Non-functional, no complaint', dnf.length, 'Gap — '+matchedN+' matched', 'r',
+      'Not-Functional (ONA) plants with zero complaints raised. Based on '+matchedN+' registry-matched plants only.',
+      'ONA latest drill · Complaints'+dateLabel, 'm-discrepancy'),
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN+' matched', '',
+      'Mean raise→MOIC resolution days for resolved complaints. Based on '+matchedN+' registry-matched plants.',
+      'Resolved complaints'+dateLabel, 'm-resolution'),
   ].join('');
 
-  // Set period labels on all Page 1 charts
-  const onaFixed = 'All ONA drills: Oct 2024 – Apr 2026';
+  // ── Chart / widget calls ────────────────────────────────────────────────────
+  const onaFixed   = 'All ONA drills: Oct 2024 – Apr 2026';
   const compPeriod = fromD||toD ? `Complaints: ${fromD||'start'} → ${toD||'today'}` : 'Complaints: Aug 2024 – Apr 2026 (all time)';
-  const p1AllowedCodes = new Set(baseps.map(p=>String(p.c)));
-  setPeriod('p1a-period', onaFixed);
-  tlApplyDistrictFilter(msGet('ms1d')[0] || '', p1AllowedCodes, fromD, toD);
-  setPeriod('p1b-period', `${onaFixed} · ${compPeriod}`);
-  setPeriod('p1f-period', onaFixed);
+  const p1AllowedCodes = new Set(baseps.map(function(p){ return String(p.c); }));
+  const selDistStr = selDist[0] || '';
+
+  setPeriod('p1a-period', onaFixed + ' (ALL ONA plants)');
+  // ONA timeline now uses full ONA data (tlApply uses ONA_MONTHLY_ALL)
+  tlApplyAllONA(selDistStr, fromD, toD);
+  setPeriod('p1b-period', `${matchedN} matched plants · ${compPeriod}`);
+  setPeriod('p1f-period', onaFixed + ' (ALL ONA plants)');
   setPeriod('p1disc-period', `${onaFixed} · ${compPeriod}`);
 
-  // (Timeline chart replaces donut — rendered by tlInit)
+  // FC widget uses only matched plants (cross-source)
+  fcDraw(selDistStr, fromD, toD, p1AllowedCodes);
 
-  // Stacked bar complaint coverage
-  // (Functionality vs complaint record replaced by interactive fc widget)
-  fcDraw(msGet('ms1d')[0] || '', fromD, toD, p1AllowedCodes);
+  // Purity trend uses ALL ONA data via ONA_MONTHLY_ALL
+  purDrawAllONA(selDistStr);
 
-  // Purity interactive widget
-  purDraw(msGet('ms1d')[0] || '', p1AllowedCodes);
-
-  // Discrepancy table
-  onaIntelDraw(ps);
+  // ONA Intelligence uses ALL ONA plants
+  onaIntelDraw(onaAll);
   updateChartFilterBars_(1);
 }
 
@@ -1969,7 +2020,7 @@ function purDraw(district, allowedCodes) {
   document.getElementById('pur-title').textContent = 'Purity trend — functional plants (ONA)';
   purDrawOverview(district);
 }
-function purReset() { purDraw(msGet('ms1d')[0] || '', purAllowedCodes); }
+function purReset() { purDrawAllONA(msGet('ms1d')[0] || ''); }
 
 function purDrawOverview(district) {
   const entries = purHistoryEntries(district, purAllowedCodes);
@@ -3580,6 +3631,166 @@ let tlAllowedCodes   = null;
 let tlFromD          = null;
 let tlToD            = null;
 
+/* ── tlApplyAllONA: ONA timeline using ALL ONA drills (ONA_MONTHLY_ALL) ── */
+function tlApplyAllONA(dist, fromD, toD) {
+  tlDistrictFilter = dist || '';
+  tlAllowedCodes   = null;   // null = no code restriction
+  tlFromD = fromD || null;
+  tlToD   = toD   || null;
+  if (tlMode === 'overview') tlDrawAllONA();
+  // else: keep current drill-down view unchanged
+}
+
+function tlDrawAllONA() {
+  tlMode = 'overview';
+  const container = document.getElementById('tl-container');
+  const barH = 180, barW = 38, gap = 6;
+
+  // Filter ONA_MONTHLY_ALL by district and date range
+  let rows = ONA_MONTHLY_ALL;
+  if (tlDistrictFilter) rows = rows.filter(function(r){ return r.dist === tlDistrictFilter; });
+  if (tlFromD) rows = rows.filter(function(r){ return r.m >= tlFromD.slice(0,7); });
+  if (tlToD)   rows = rows.filter(function(r){ return r.m <= tlToD.slice(0,7); });
+
+  // Aggregate by month (sum across districts when no district filter)
+  const byM = {};
+  rows.forEach(function(r) {
+    if (!byM[r.m]) byM[r.m] = { f:0, n:0 };
+    byM[r.m].f += r.f;
+    byM[r.m].n += r.n;
+  });
+
+  const months = Object.keys(byM).sort();
+  if (!months.length) {
+    container.innerHTML = '<div style="padding:20px;color:var(--muted);font-size:12px">No ONA drill data for selected filters.</div>';
+    return;
+  }
+
+  const totalW = months.length * (barW + gap);
+  let bars = '';
+  months.forEach(function(mo, i) {
+    const d = byM[mo], total = d.f + d.n, x = i * (barW + gap);
+    const fH = total ? Math.round((d.f/total)*barH) : 0;
+    const nH = barH - fH;
+    const pctF = total ? Math.round(d.f/total*100) : 0;
+    const pctN = 100 - pctF;
+    const fLbl = fH>=26 ? `<text x="${x+barW/2}" y="${barH-fH/2-4}" text-anchor="middle" font-size="8" font-weight="700" fill="white" pointer-events="none">${d.f}</text><text x="${x+barW/2}" y="${barH-fH/2+7}" text-anchor="middle" font-size="7" fill="white" opacity="0.85" pointer-events="none">(${pctF}%)</text>` : '';
+    const nLbl = nH>=26 ? `<text x="${x+barW/2}" y="${nH/2-4}" text-anchor="middle" font-size="8" font-weight="700" fill="white" pointer-events="none">${d.n}</text><text x="${x+barW/2}" y="${nH/2+7}" text-anchor="middle" font-size="7" fill="white" opacity="0.85" pointer-events="none">(${pctN}%)</text>` : '';
+    bars += `<g class="tl-bar" style="cursor:pointer" onclick="tlClickMonth('${mo}')" role="button" tabindex="0">
+      <title>${tlMonthLabel(mo)} — ${d.f} Functional (${pctF}%), ${d.n} Not-Functional · ALL ONA drills</title>
+      <rect x="${x}" y="${barH-fH}" width="${barW}" height="${fH}" fill="#1D9E75" rx="2"/>
+      <rect x="${x}" y="0" width="${barW}" height="${nH}" fill="#E24B4A" rx="2"/>
+      ${fLbl}${nLbl}
+      <text x="${x+barW/2}" y="${barH+14}" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.6">${tlMonthLabel(mo)}</text>
+      <rect x="${x}" y="0" width="${barW}" height="${barH}" fill="transparent" class="tl-hover"/>
+    </g>`;
+  });
+
+  container.innerHTML = `<svg viewBox="0 -10 ${totalW} ${barH+30}" width="100%" style="max-height:220px;display:block">
+    <style>.tl-bar:hover .tl-hover{fill:rgba(0,0,0,0.06)}</style>${bars}</svg>
+    <div style="font-size:10px;color:var(--muted);margin-top:4px;padding-left:2px">
+      Showing ALL ONA mock-drill submissions · Drill-down shows registry-matched plants only
+    </div>`;
+}
+
+/* ── purDrawAllONA: ONA purity overview using ALL ONA drills ── */
+function purDrawAllONA(dist) {
+  purMode = 'overview';
+  purAllowedCodes = null;
+  document.getElementById('pur-breadcrumb').style.display = 'none';
+  document.getElementById('pur-title').textContent = 'Purity trend — functional plants (ONA)';
+  purDrawAllONAOverview(dist);
+}
+
+function purDrawAllONAOverview(dist) {
+  const container = document.getElementById('pur-container');
+
+  // Filter ONA_MONTHLY_ALL by district; aggregate purity by month
+  let rows = ONA_MONTHLY_ALL;
+  if (dist) rows = rows.filter(function(r){ return r.dist === dist; });
+
+  // Aggregate avg_purity by month (weighted average across districts)
+  const byM = {};
+  rows.forEach(function(r) {
+    if (!byM[r.m]) byM[r.m] = { sum: 0, cnt: 0, n: 0 };
+    if (r.avgP != null && r.f > 0) {
+      byM[r.m].sum += r.avgP * r.f;
+      byM[r.m].cnt += r.f;
+    }
+    byM[r.m].n++;
+  });
+
+  const months = Object.keys(byM).sort();
+  const monthData = months.map(function(m) {
+    const s = byM[m];
+    return { m: m, avg: s.cnt > 0 ? Math.round((s.sum/s.cnt)*10)/10 : null };
+  }).filter(function(d){ return d.avg != null; });
+
+  if (monthData.length < 2) {
+    container.innerHTML = '<div style="padding:24px;color:var(--muted);text-align:center">No purity data available.</div>';
+    return;
+  }
+
+  // Render using existing purMonthlyStats-style chart
+  // (reuse the overview rendering but with ONA_MONTHLY_ALL data)
+  const PAD = {t:18, r:32, b:36, l:48};
+  const W = Math.max(680, monthData.length*44+PAD.l+PAD.r), H = 180;
+  const cW = W-PAD.l-PAD.r, cH = H-PAD.t-PAD.b;
+  const minY = 60, maxY = 102;
+  function yPx(v){ return PAD.t+cH*(1-(v-minY)/(maxY-minY)); }
+  function xPx(i){ return PAD.l+(monthData.length<2?cW/2:(i/(monthData.length-1))*cW); }
+
+  const vals   = monthData.map(function(d){ return d.avg; });
+  const overallAvg = (vals.reduce(function(s,v){ return s+v; },0)/vals.length).toFixed(1);
+  const lastM  = monthData[monthData.length-1];
+  const prevM  = monthData[monthData.length-2];
+  const trend  = prevM ? (lastM.avg > prevM.avg ? '▲' : lastM.avg < prevM.avg ? '▼' : '→') : '';
+  const tCol   = prevM ? (lastM.avg > prevM.avg ? '#1D9E75' : lastM.avg < prevM.avg ? '#E24B4A' : 'var(--muted)') : 'var(--muted)';
+
+  const linePts = monthData.map(function(d,i){ return `${xPx(i).toFixed(1)},${yPx(d.avg).toFixed(1)}`; }).join(' ');
+  const areaPath = `M${xPx(0).toFixed(1)},${yPx(monthData[0].avg).toFixed(1)} `
+    + monthData.map(function(d,i){ return `L${xPx(i).toFixed(1)},${yPx(d.avg).toFixed(1)}`; }).join(' ')
+    + ` L${xPx(monthData.length-1).toFixed(1)},${yPx(minY).toFixed(1)} L${xPx(0).toFixed(1)},${yPx(minY).toFixed(1)} Z`;
+
+  const y90 = yPx(90).toFixed(1), y93 = yPx(93).toFixed(1);
+  const yGridLines = [70,80,90,100].map(function(v){ return `<line x1="${PAD.l}" y1="${yPx(v).toFixed(1)}" x2="${PAD.l+cW}" y2="${yPx(v).toFixed(1)}" stroke="var(--border)" stroke-width="0.8" opacity="0.3"/>`; }).join('');
+  const yLabels    = [70,80,90,93,100].map(function(v){ return `<text x="${PAD.l-5}" y="${(yPx(v)+3).toFixed(1)}" text-anchor="end" font-size="7" fill="var(--muted)" opacity="0.7">${v}%</text>`; }).join('');
+
+  const step = Math.max(1, Math.ceil(monthData.length/8));
+  const xLabels = monthData.map(function(d,i){
+    if (i%step!==0 && i!==monthData.length-1) return '';
+    const [yr,mo2] = d.m.split('-');
+    const lb = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo2]+' '+yr.slice(2);
+    return `<text x="${xPx(i).toFixed(1)}" y="${(H-PAD.b+14).toFixed(1)}" text-anchor="middle" font-size="7" fill="var(--muted)" opacity="0.7">${lb}</text>`;
+  }).join('');
+
+  const dots = monthData.map(function(d,i){
+    const c = purColor(d.avg);
+    return `<circle cx="${xPx(i).toFixed(1)}" cy="${yPx(d.avg).toFixed(1)}" r="4.5" fill="${c}" stroke="var(--card)" stroke-width="1.5"
+      style="cursor:pointer" onclick="purClickMonth('${d.m}')" title="${d.m}: avg ${d.avg}%, ALL ONA drills"/>
+      <rect x="${(xPx(i)-10).toFixed(1)}" y="${PAD.t}" width="20" height="${cH}" fill="transparent" style="cursor:pointer" onclick="purClickMonth('${d.m}')"/>`;
+  }).join('');
+
+  const chips = `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">
+    <div style="font-size:11px;color:var(--muted)">Overall avg <strong style="color:${purColor(+overallAvg)}">${overallAvg}%</strong></div>
+    <div style="font-size:11px;color:var(--muted)">Latest month <strong style="color:${purColor(lastM.avg)}">${lastM.avg}%</strong> <span style="color:${tCol}">${trend}</span></div>
+    <div style="font-size:11px;color:var(--muted)">${monthData.length} months of data</div>
+    <div style="font-size:10px;color:var(--muted);align-self:center">ALL ONA drills · click a dot to see matched plants</div>
+  </div>`;
+
+  container.innerHTML = chips + `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;overflow:visible">
+    ${yGridLines}
+    <line x1="${PAD.l}" y1="${y90}" x2="${PAD.l+cW}" y2="${y90}" stroke="#EF9F27" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+    <text x="${PAD.l+cW+2}" y="${(+y90+3).toFixed(1)}" font-size="7" fill="#EF9F27" opacity="0.8">90%</text>
+    <line x1="${PAD.l}" y1="${y93}" x2="${PAD.l+cW}" y2="${y93}" stroke="#1D9E75" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>
+    <text x="${PAD.l+cW+2}" y="${(+y93+3).toFixed(1)}" font-size="7" fill="#1D9E75" opacity="0.8">93%</text>
+    <path d="${areaPath}" fill="#1D9E75" opacity="0.10"/>
+    <polyline points="${linePts}" fill="none" stroke="#1D9E75" stroke-width="2.2" stroke-linejoin="round"/>
+    <line x1="${PAD.l}" y1="${PAD.t}" x2="${PAD.l}" y2="${PAD.t+cH}" stroke="var(--border)" stroke-width="1"/>
+    ${yLabels}${xLabels}${dots}
+  </svg>`;
+}
+
 function tlApplyDistrictFilter(dist, allowedCodes, fromD, toD) {
   tlDistrictFilter = dist || '';
   tlAllowedCodes   = allowedCodes || null;
@@ -3763,7 +3974,7 @@ function tlDrawPlant(code) {
 
 // Init on page load
 function tlInit() {
-  tlDrawOverview();
+  tlDrawAllONA(); // uses ALL ONA drills via ONA_MONTHLY_ALL
 }
 // =================== END ONA TIMELINE WIDGET ===================
 
