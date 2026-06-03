@@ -973,8 +973,8 @@ async function loadDashboard() {
         ct:   +r.complaint_count || 0,
         ha:   isTruthy(r.has_active_complaint),
         cl:   comps,
-        // Dummy ONA fields (not available in this cross-reference)
-        c: null, os: '', osc: '', op: null, od: null, or_: '',
+        // Dummy ONA fields (not available in this cross-reference); use QR as display code
+        c: r.qr_suffix || null, os: '', osc: '', op: null, od: null, or_: '',
         re: false, rr: false, ds: null, dept: '', co: null,
         active_comps: active.length,
       };
@@ -3004,20 +3004,20 @@ const EUFC = {
 let eufcMode='overview', eufcActiveGroup=null, eufcActiveDistrict='', eufcFromD=null, eufcToD=null;
 let eufcEuStatus='', eufcEuFrom=null, eufcEuTo=null;
 let eufcAllowedCodes = null;
+var eufcUseCross  = false;   // true when Page 2 is active — use EU_CROSS as data source
+var eufcCrossPool = null;    // filtered EU_CROSS plants for the current Page 2 view
 
 /* eufcDrawCross: EU vs Complaint status using EU_CROSS (direct registry join)
-   Replaces eufcDraw on Page 2 — no longer limited to 441 mapped plants.  */
+   Replaces eufcDraw on Page 2 — no longer limited to 441 mapped plants.
+   Stores plants permanently so drill-downs and resets also use EU_CROSS.  */
 function eufcDrawCross(plants) {
+  eufcUseCross  = true;       // switch eufcFilteredPlants to EU_CROSS mode
+  eufcCrossPool = plants;     // persists for all drill-down / reset calls
   eufcMode = 'overview';
   eufcActiveDistrict = '';
   eufcAllowedCodes   = null;
   eufcEuFrom = null; eufcEuTo = null;
-  // Temporarily override eufcFilteredPlants to use EU_CROSS
-  var prev = eufcFilteredPlants;
-  eufcFilteredPlants = function() { return plants.filter(function(p){ return !!p.es; }); };
   eufcDrawOverview();
-  eufcFilteredPlants = prev;
-  // Note on data source
   var container = document.getElementById('eufc-container');
   if (container) {
     var note = document.createElement('div');
@@ -3044,7 +3044,8 @@ function eufcReset() {
   eufcDrawOverview();
 }
 function eufcFilteredPlants() {
-  return RAW.slim_plants.filter(p => {
+  var base = (eufcUseCross && eufcCrossPool) ? eufcCrossPool : RAW.slim_plants;
+  return base.filter(p => {
     if(!p.es) return false;
     if(eufcActiveDistrict && p.dd !== eufcActiveDistrict) return false;
     if(eufcAllowedCodes && !eufcAllowedCodes.has(String(p.c))) return false;
