@@ -979,7 +979,7 @@ async function loadDashboard() {
         active_comps: active.length,
       };
     });
-    Logger.log && console.log && console.log('EU_CROSS loaded: ' + EU_CROSS.length + ' registry assets');
+    console.log('EU_CROSS loaded: ' + EU_CROSS.length + ' registry assets');
 
     /* --- REGISTRY_ALL: all 515 registry assets for Page 3 funnel --- */
     REGISTRY_ALL = rowsToObjects(registryVals).map(function(r) {

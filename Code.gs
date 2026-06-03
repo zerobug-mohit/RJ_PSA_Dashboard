@@ -230,13 +230,16 @@ function deriveDashboard() {
   if (regRows.length) Logger.log('Registry headers: ' + Object.keys(regRows[0]).filter(function(k) { return !k.startsWith('_col'); }).join(' | '));
 
   const byDHC = {}; // "normDist|normHosp|cap" → [asset]
+  const byDH  = {}; // "normDist|normHosp"    → [asset]  (ignores capacity — used for Step B fallbacks)
   const byQR  = {}; // qrSuffix → asset
 
   regRows.forEach(function(r) {
-    const dist = normName(r['District Name']     || r['_col1'] || '');
+    // Use normDist (= normName∘districtDisplay) so "Jaipur1"/"Jaipur2" keys
+    // in byDHC/byDH match the sihDist computed the same way in Step B.
+    const dist = normDist(r['District Name']     || r['_col1'] || '');
     const hosp = normName(r['Hospital Name']     || r['_col2'] || '');
-    const cap  = parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col9'] || '');
-    const qr   = qrSuffix(r['QR Code']          || r['_col4'] || '');
+    const cap  = parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col22'] || '');
+    const qr   = qrSuffix(r['QR Code']          || r['_col9'] || '');
     const key  = dist + '|' + hosp + '|' + cap;
 
     const asset = {
@@ -244,16 +247,19 @@ function deriveDashboard() {
       sf:       String(r['Hospital Name'] || r['_col2'] || '').trim(),
       cap:      cap,
       eq:       qr,
-      sei:      String(r['Equipment Status']   || r['_col8'] || '').trim(),
-      sii:      String(r['Inventory Status']   || r['_col7'] || '').trim(),
-      smd:      toISO(fromDMY(r['MOIC Verified Date'] || r['_col6'] || '')),
-      supplier: normMfr(r['Supplier'] || r['_col10'] || ''),
+      sei:      String(r['Equipment Status']   || r['_col18'] || '').trim(),
+      sii:      String(r['Inventory Status']   || r['_col17'] || '').trim(),
+      smd:      toISO(fromDMY(r['MOIC Verified Date'] || r['_col14'] || '')),
+      supplier: normMfr(r['Supplier'] || r['_col19'] || ''),
       hq:       !!qr,
-      iv:       String(r['Inventory Status'] || r['_col7'] || '').trim() === 'Verified Inventory',
+      iv:       String(r['Inventory Status'] || r['_col17'] || '').trim() === 'Verified Inventory',
     };
 
     if (!byDHC[key]) byDHC[key] = [];
     byDHC[key].push(asset);
+    const dhKey = dist + '|' + hosp;
+    if (!byDH[dhKey]) byDH[dhKey] = [];
+    byDH[dhKey].push(asset);
     if (qr) byQR[qr] = asset;
   });
   Logger.log('Registry: ' + regRows.length + ' rows | ' + Object.keys(byDHC).length + ' DHC keys | ' + Object.keys(byQR).length + ' QR keys');
@@ -261,17 +267,17 @@ function deriveDashboard() {
   // BUILD registry_plants tab — ALL 515 assets for Page 3 funnel
   const registryPlantsHeaders = ['district','hospital','capacity','qr_suffix','has_qr','equipment_status','inventory_status','moic_verified_date','is_verified'];
   const registryPlantsRows = regRows.map(function(r) {
-    var qr  = qrSuffix(r['QR Code'] || r['_col4'] || '');
-    var sii = String(r['Inventory Status'] || r['_col7'] || '').trim();
+    var qr  = qrSuffix(r['QR Code'] || r['_col9'] || '');
+    var sii = String(r['Inventory Status'] || r['_col17'] || '').trim();
     return [
       districtDisplay(r['District Name'] || r['_col1'] || ''),
       String(r['Hospital Name'] || r['_col2'] || '').trim(),
-      parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col9'] || '') || '',
+      parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col22'] || '') || '',
       qr,
       qr ? 'true' : 'false',
-      String(r['Equipment Status'] || r['_col8'] || '').trim(),
+      String(r['Equipment Status'] || r['_col18'] || '').trim(),
       sii,
-      toISO(fromDMY(r['MOIC Verified Date'] || r['_col6'] || '')),
+      toISO(fromDMY(r['MOIC Verified Date'] || r['_col14'] || '')),
       (sii === 'Verified Inventory') ? 'true' : 'false',
     ];
   });
@@ -288,48 +294,110 @@ function deriveDashboard() {
   const missesB   = [];
   var resolvedB = 0, totalB = 0;
 
+  // Resolve an asset from a bucket using manufacturer tiebreak
+  function resolveBucket_(bucket, sihMfr) {
+    if (!bucket || !bucket.length) return null;
+    if (bucket.length === 1) return bucket[0];
+    if (sihMfr) {
+      var exact = bucket.filter(function(a){ return a.supplier === sihMfr; });
+      if (exact.length) return exact[0];
+      var tok = sihMfr.split(' ')[0];
+      if (tok) {
+        var part = bucket.filter(function(a){ return a.supplier && a.supplier.indexOf(tok) !== -1; });
+        if (part.length) return part[0];
+      }
+    }
+    return bucket[0];
+  }
+
+  // Strip trailing tokens from a normalized hospital name if they normalize to the same district.
+  // E.g. "bdm hospital kotputali dh jaipur2" with dist "jaipur" → "bdm hospital kotputali dh"
+  // Returns stripped string if any tokens were removed, otherwise null.
+  function stripDistSuffix_(hospNorm, distNorm) {
+    var parts = hospNorm.split(' ');
+    var changed = false;
+    while (parts.length > 1) {
+      var last = parts[parts.length - 1];
+      if (normDist(last) === distNorm) { parts.pop(); changed = true; }
+      else break;
+    }
+    return changed ? parts.join(' ') : null;
+  }
+
   mapRows.forEach(function(m) {
     // Code is col 1 (0-indexed); try named key first
     const code = m['Code'] != null ? m['Code'] : m['_col1'];
     if (code == null || code === '') return;
     totalB++;
 
-    // ONA side: cols 2-5
-    const onaDistRaw = String(m['ONA District']          || m['_col2'] || '').trim();
-    const onaFacRaw  = String(m['ONA Health Facility']   || m['_col3'] || '').trim();
-    const onaCapRaw  = m['ONA Capacity']                 != null ? m['ONA Capacity']  : m['_col4'];
-    const onaMfrRaw  = String(m['ONA Manufacturer']      || m['_col5'] || '').trim();
+    // ONA side: cols 3-6
+    const onaDistRaw = String(m['ONA District']          || m['_col3'] || '').trim();
+    const onaFacRaw  = String(m['ONA Health Facility']   || m['_col4'] || '').trim();
+    const onaCapRaw  = m['ONA Capacity']                 != null ? m['ONA Capacity']  : m['_col5'];
+    const onaMfrRaw  = String(m['ONA Manufacturer']      || m['_col6'] || '').trim();
 
-    // SIH side: cols 6-9
-    const sihDistRaw = String(m['SIH District']          || m['_col6'] || '').trim();
-    const sihHospRaw = String(m['SIH Health Facility']   || m['_col7'] || '').trim();
-    const sihCapRaw  = m['SIH Capacity']                 != null ? m['SIH Capacity']  : m['_col8'];
-    const sihMfrRaw  = String(m['SIH Manufacturer']      || m['_col9'] || '').trim();
+    // SIH side: cols 7-10
+    const sihDistRaw = String(m['SIH District']          || m['_col7'] || '').trim();
+    const sihHospRaw = String(m['SIH Health Facility']   || m['_col8'] || '').trim();
+    const sihCapRaw  = m['SIH Capacity']                 != null ? m['SIH Capacity']  : m['_col9'];
+    const sihMfrRaw  = String(m['SIH Manufacturer']      || m['_col10'] || '').trim();
 
-    const sihDist = normName(sihDistRaw);
+    // Use normDist (= normName∘districtDisplay) so "Jaipur1"/"Jaipur2" → "jaipur"
+    const sihDist = normDist(sihDistRaw);
     const sihHosp = normName(sihHospRaw);
     const sihCap  = parseCap(sihCapRaw);
     const sihMfr  = normMfr(sihMfrRaw);
 
-    const key    = sihDist + '|' + sihHosp + '|' + sihCap;
-    const bucket = byDHC[key] || [];
-
     var asset = null;
-    if (bucket.length === 1) {
-      asset = bucket[0];
-    } else if (bucket.length > 1) {
-      // Manufacturer tiebreak (§4 Step B)
-      asset = bucket.filter(function(a) { return sihMfr && a.supplier === sihMfr; })[0] || null;
-      if (!asset && sihMfr) {
-        // Partial match on first token
-        const tok = sihMfr.split(' ')[0];
-        asset = bucket.filter(function(a) { return a.supplier && a.supplier.indexOf(tok) !== -1; })[0] || null;
+    var fallbackUsed = '';
+
+    // ── Primary: exact district + hospital + capacity ──
+    asset = resolveBucket_(byDHC[sihDist + '|' + sihHosp + '|' + sihCap], sihMfr);
+
+    // ── F1: strip trailing district-suffix from hospital name, same capacity ──
+    if (!asset) {
+      var stripped = stripDistSuffix_(sihHosp, sihDist);
+      if (stripped) {
+        asset = resolveBucket_(byDHC[sihDist + '|' + stripped + '|' + sihCap], sihMfr);
+        if (asset) fallbackUsed = 'F1:strip-hosp-suffix';
       }
-      if (!asset) asset = bucket[0]; // fallback: first in bucket
+    }
+
+    // ── F2: original hospital, any capacity (handles capacity mismatch / null cap) ──
+    if (!asset) {
+      asset = resolveBucket_(byDH[sihDist + '|' + sihHosp], sihMfr);
+      if (asset) fallbackUsed = 'F2:any-cap';
+    }
+
+    // ── F3: stripped hospital, any capacity ──
+    if (!asset) {
+      var stripped2 = stripped || stripDistSuffix_(sihHosp, sihDist);
+      if (stripped2) {
+        asset = resolveBucket_(byDH[sihDist + '|' + stripped2], sihMfr);
+        if (asset) fallbackUsed = 'F3:strip+any-cap';
+      }
+    }
+
+    // ── F4: last token of hospital name as alternative district ──
+    if (!asset) {
+      var hospParts = sihHosp.split(' ');
+      if (hospParts.length > 1) {
+        var altDist = hospParts[hospParts.length - 1];
+        if (altDist !== sihDist) {
+          // Try with the alternative district and the full hospital name
+          asset = resolveBucket_(byDH[altDist + '|' + sihHosp], sihMfr);
+          if (!asset) {
+            // Also try stripping the alt-dist token from the hospital name
+            asset = resolveBucket_(byDH[altDist + '|' + hospParts.slice(0, -1).join(' ')], sihMfr);
+          }
+          if (asset) fallbackUsed = 'F4:alt-dist(' + altDist + ')';
+        }
+      }
     }
 
     if (asset) {
       resolvedB++;
+      if (fallbackUsed) Logger.log('Step B ' + fallbackUsed + ': code ' + code + ' → ' + asset.dd + ' / ' + asset.sf);
       codeMap[String(code)] = {
         asset:       asset,
         of:          parseONAFacility(onaFacRaw).name || onaFacRaw,
@@ -343,7 +411,7 @@ function deriveDashboard() {
         dept:        String(m['Department'] || '').trim(),
       };
     } else {
-      missesB.push({ code: code, key: key });
+      missesB.push({ code: code, key: sihDist + '|' + sihHosp + '|' + sihCap });
     }
   });
 
@@ -511,9 +579,9 @@ function deriveDashboard() {
 
   const euParsed = [];
   euRows.forEach(function(r) {
-    const drillDate = fromDMY(r['Date of Mockdrill'] || r['_col6'] || '');
-    const ep    = parseFloat(r['Purity(in percent)']            || r['_col9']  || '');
-    const hours = parseFloat(r['Total running hours']           || r['_col8']  || '');
+    const drillDate = fromDMY(r['Date of Mockdrill'] || r['_col8'] || '');
+    const ep    = parseFloat(r['Purity(in percent)']            || r['_col12'] || '');
+    const hours = parseFloat(r['Total running hours']           || r['_col11'] || '');
 
     const distRaw = String(r['District Name'] || r['_col1'] || '').trim();
     const hospRaw = String(r['Hospital Name'] || r['_col2'] || '').trim();
@@ -523,19 +591,24 @@ function deriveDashboard() {
       distNorm: normName(distRaw),
       distDisp: normDist(distRaw),
       hospNorm: normName(hospRaw),
-      cap:      parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col5'] || ''),
-      mfr:      normMfr(String(r['Manufacturer'] || r['Supplier'] || r['_col3'] || '')),
+      cap:      parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col10'] || ''),
+      mfr:      normMfr(String(r['Manufacturer'] || r['Supplier'] || r['_col6'] || '')),
+      euQR:     qrSuffix(String(r['QR Code'] || r['_col5'] || '')),
       es:       String(r['Equipment Status'] || r['_col4'] || '').trim(),
       ep:       (!isNaN(ep) && ep > 0) ? Math.min(ep, 100) : null,
       epr:      !isNaN(hours) ? hours : null,
-      el:       String(r['Any leakage observed'] || '').toLowerCase().startsWith('y'),
-      ef:       String(r['Fire Safety measures in the hospital'] || r['_col10'] || '').trim(),
+      el:       String(r['Any leakage observed'] || r['_col19'] || '').toLowerCase().startsWith('y'),
+      ef:       String(r['Fire Safety measures in the hospital'] || r['_col17'] || '').trim(),
       ed:       toISO(drillDate),
       date:     drillDate,
       notRunning: (ep === 0 && hours === 0),
     });
   });
   Logger.log('EU: ' + euParsed.length + ' parsed drills');
+
+  // Note: EU data stores QR codes as large integers (~20 digits) which Google Sheets
+  // returns in scientific notation ("8E+20"). JavaScript loses precision on these, making
+  // EU QR-based matching unreliable. eu_direct_cross uses district+hospital+capacity instead.
 
   const euDrillsByCode = {}; // code → [drill]
   const euTimeline     = []; // flat rows for eu_timeline tab
@@ -631,6 +704,7 @@ function deriveDashboard() {
   // ------------------------------------------------------------------
   Logger.log('Reading gs_complaints…');
   const allComps = readSheetAsObjects(CONFIG.complaints, CONFIG.tabs.complaints, 0);
+  if (allComps.length) Logger.log('Complaints headers: ' + Object.keys(allComps[0]).filter(function(k){ return !k.startsWith('_col'); }).join(' | '));
 
   const complaintsByCode = {}; // code → [complaint]
   var matchedE = 0, totalE = 0;
@@ -643,7 +717,7 @@ function deriveDashboard() {
   });
 
   allComps.forEach(function(c) {
-    const qr = qrSuffix(String(c['Service Provider QR Code'] || c['_col3'] || ''));
+    const qr = qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || ''));
     if (!qr) return;
     totalE++;
 
@@ -656,9 +730,9 @@ function deriveDashboard() {
 
     matchedE++;
     const raiseD  = fromExcel(c['Complaint Raise Date']     || c['_col6']  || '');
-    const attendD = fromExcel(c['Complaint Attend date']     || c['_col7']  || '');
-    const closeD  = fromExcel(c['Complaint Close date']      || c['_col8']  || '');
-    const moicD   = fromExcel(c['Complaint Close by MOIC']   || c['_col9']  || '');
+    const attendD = fromExcel(c['Complaint Attend date']     || c['_col9']  || '');
+    const closeD  = fromExcel(c['Complaint Close date']      || c['_col10'] || '');
+    const moicD   = fromExcel(c['Complaint Close by MOIC']   || c['_col11'] || '');
 
     function daysDiff(a, b) { return (a && b) ? Math.round((b - a) / 86400000) : null; }
 
@@ -676,7 +750,7 @@ function deriveDashboard() {
       rp: daysDiff(attendD, closeD),
       vr: daysDiff(closeD,  moicD),
       tr: daysDiff(raiseD,  moicD),
-      dh: parseFloat(c['Total Downtime'] || c['_col13'] || '') || null,
+      dh: parseFloat(c['Total Downtime'] || c['_col12'] || '') || null,
     });
   });
   Logger.log('Step E: ' + matchedE + '/' + totalE + ' complaints matched by QR (target 229/229)');
@@ -700,15 +774,21 @@ function deriveDashboard() {
   const euDirectCrossRows = [];
   var euDirectMatched = 0;
 
-  regRows.forEach(function(r) {
-    var regDist = normName(r['District Name'] || r['_col1'] || '');
-    var regHosp = normName(r['Hospital Name'] || r['_col2'] || '');
-    var regCap  = parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col9'] || '');
-    var qr      = qrSuffix(r['QR Code'] || r['_col4'] || '');
-    var sii     = String(r['Inventory Status'] || r['_col7'] || '').trim();
+  var euDCMatchedByDHC = 0;
 
-    // Match EU drills to this registry asset (same logic as Step D but for ALL assets)
-    var euHits = euParsed.filter(function(d) {
+  regRows.forEach(function(r) {
+    var regDist = normName(districtDisplay(r['District Name'] || r['_col1'] || ''));
+    var regHosp = normName(r['Hospital Name'] || r['_col2'] || '');
+    var regCap  = parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col22'] || '');
+    var qr      = qrSuffix(r['QR Code'] || r['_col9'] || '');
+    var sii     = String(r['Inventory Status'] || r['_col17'] || '').trim();
+    var regMfr  = normMfr(r['Supplier'] || r['_col19'] || '');
+
+    // Match EU drills by district + hospital + capacity (manufacturer tiebreak for ambiguous cases).
+    // QR-based matching is not possible: EU stores QR as large integers (~20 digits) that
+    // JavaScript truncates to scientific notation, losing the digits needed for suffix matching.
+    var euHits = [];
+    var candidates = euParsed.filter(function(d) {
       if (d.distNorm !== regDist && d.distDisp !== regDist) return false;
       if (d.hospNorm !== regHosp) {
         if (!d.hospNorm.includes(regHosp) && !regHosp.includes(d.hospNorm)) {
@@ -719,6 +799,14 @@ function deriveDashboard() {
       if (regCap && d.cap && d.cap !== regCap) return false;
       return true;
     });
+    if (candidates.length) {
+      if (candidates.length > 1 && regMfr) {
+        var mfrMatch = candidates.filter(function(d){ return d.mfr && d.mfr.indexOf(regMfr.split(' ')[0]) !== -1; });
+        if (mfrMatch.length) candidates = mfrMatch;
+      }
+      euHits = candidates;
+      euDCMatchedByDHC++;
+    }
 
     var sortedEU = euHits.filter(function(d){return d.date;}).sort(function(a,b){return a.date>b.date?-1:1;});
     var latestEU = sortedEU[0] || euHits[0];
@@ -727,11 +815,11 @@ function deriveDashboard() {
     var regComps = [];
     if (qr) {
       allComps.forEach(function(c) {
-        if (qrSuffix(String(c['Service Provider QR Code'] || c['_col3'] || '')) !== qr) return;
+        if (qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || '')) !== qr) return;
         var raiseD  = fromExcel(c['Complaint Raise Date']   || c['_col6'] || '');
-        var attendD = fromExcel(c['Complaint Attend date']  || c['_col7'] || '');
-        var closeD  = fromExcel(c['Complaint Close date']   || c['_col8'] || '');
-        var moicD   = fromExcel(c['Complaint Close by MOIC']|| c['_col9'] || '');
+        var attendD = fromExcel(c['Complaint Attend date']  || c['_col9'] || '');
+        var closeD  = fromExcel(c['Complaint Close date']   || c['_col10'] || '');
+        var moicD   = fromExcel(c['Complaint Close by MOIC']|| c['_col11'] || '');
         var status;
         if (moicD) status = 'Resolved';
         else if (closeD) status = 'Pending MOIC Verification';
@@ -741,7 +829,7 @@ function deriveDashboard() {
           rd: toISO(raiseD), st: status,
           rs: daysDiff2(raiseD, attendD), rp: daysDiff2(attendD, closeD),
           vr: daysDiff2(closeD, moicD),  tr: daysDiff2(raiseD, moicD),
-          dh: parseFloat(c['Total Downtime'] || c['_col13'] || '') || null,
+          dh: parseFloat(c['Total Downtime'] || c['_col12'] || '') || null,
         });
       });
     }
@@ -749,15 +837,15 @@ function deriveDashboard() {
     var hasActive = regComps.some(function(c){ return c.st !== 'Resolved'; });
     if (euHits.length > 0 || regComps.length > 0) euDirectMatched++;
 
-    euDirectCrossRows.push([
+    euDirectCrossRows.push([  // one row per registry asset
       districtDisplay(r['District Name'] || r['_col1'] || ''),
       String(r['Hospital Name'] || r['_col2'] || '').trim(),
       regCap != null ? regCap : '',
       qr,
       qr ? 'true' : 'false',
-      String(r['Equipment Status']   || r['_col8'] || '').trim(),
+      String(r['Equipment Status']   || r['_col18'] || '').trim(),
       sii,
-      toISO(fromDMY(r['MOIC Verified Date'] || r['_col6'] || '')),
+      toISO(fromDMY(r['MOIC Verified Date'] || r['_col14'] || '')),
       (sii === 'Verified Inventory') ? 'true' : 'false',
       latestEU ? latestEU.es  : '',
       latestEU && latestEU.ep  != null ? Number(latestEU.ep).toFixed(1)  : '',
@@ -771,7 +859,16 @@ function deriveDashboard() {
       JSON.stringify(regComps),
     ]);
   });
+  var euDCEUOnly   = euDirectCrossRows.filter(function(r){ return r[15] > 0 && r[16] === 0; }).length;
+  var euDCCompOnly = euDirectCrossRows.filter(function(r){ return r[15] === 0 && r[16] > 0; }).length;
+  var euDCBoth     = euDirectCrossRows.filter(function(r){ return r[15] > 0 && r[16] > 0; }).length;
+  var euDCNeither  = euDirectCrossRows.filter(function(r){ return r[15] === 0 && r[16] === 0; }).length;
   Logger.log('EU direct cross: ' + euDirectMatched + '/' + regRows.length + ' registry assets have EU or complaint data');
+  Logger.log('  EU matched via DHC: ' + euDCMatchedByDHC);
+  Logger.log('  EU drill only (no complaints): ' + euDCEUOnly);
+  Logger.log('  Complaints only (no EU drill): ' + euDCCompOnly);
+  Logger.log('  BOTH EU drill AND complaint:   ' + euDCBoth + '  ← cross-source matched plants');
+  Logger.log('  Neither (registry asset only): ' + euDCNeither);
 
   // ------------------------------------------------------------------
   // STEP F — Reporting flags (per spec §4)
@@ -852,6 +949,22 @@ function deriveDashboard() {
     ]);
   });
   Logger.log('Plant rows: ' + plantRows.length);
+
+  // ONA × Complaints cross-reference breakdown (within the 441 mapped plants)
+  var onaOnly   = 0, compOnly441 = 0, both441 = 0, neither441 = 0;
+  Object.keys(codeMap).forEach(function(code) {
+    var hasONA  = !!(onaDrillsByCode[code] && onaDrillsByCode[code].length > 0);
+    var hasComp = !!(complaintsByCode[code] && complaintsByCode[code].length > 0);
+    if (hasONA && hasComp)  { both441++; }
+    else if (hasONA)        { onaOnly++; }
+    else if (hasComp)       { compOnly441++; }
+    else                    { neither441++; }
+  });
+  Logger.log('ONA × Complaints (within 441 mapped plants):');
+  Logger.log('  ONA drill only (no complaints):     ' + onaOnly);
+  Logger.log('  Complaints only (no ONA drill):     ' + compOnly441);
+  Logger.log('  BOTH ONA drill AND complaint:       ' + both441 + '  ← cross-source matched plants');
+  Logger.log('  Neither ONA nor complaint data:     ' + neither441);
 
   // ------------------------------------------------------------------
   // BUILD ona_timeline ROWS  (§5.3)
