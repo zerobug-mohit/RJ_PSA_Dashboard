@@ -1029,13 +1029,42 @@ async function loadDashboard() {
       };
     });
 
-    /* --- DISTRICTS_SORTED / PLANTS_SORTED (re-assign globals) --- */
-    // Build district list from ALL ONA districts + matched plants (union)
-    var allDistricts = {};
-    RAW.slim_plants.forEach(function(p){ if(p.dd) allDistricts[p.dd]=1; });
-    ONA_ALL_PLANTS.forEach(function(p){ if(p.dd) allDistricts[p.dd]=1; });
-    DISTRICTS_SORTED = Object.keys(allDistricts).sort();
-    PLANTS_SORTED    = RAW.slim_plants.slice().sort(function(a, b) { return a.c - b.c; });
+    /* --- Per-page district + plant lists (data-driven, one list per page) --- */
+    // Page 1 (ONA): districts and plants from ONA_ALL_PLANTS
+    DISTRICTS_BY_PAGE['1'] = [...new Set(ONA_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
+    PLANTS_BY_PAGE['1'] = RAW.slim_plants
+      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:a.c-b.c; })
+      .map(function(p){ return { val:String(p.c), label:(p.sf||p.of||'').slice(0,38), dist:p.dd, cap:p.cs, code:'#'+p.c }; });
+
+    // Page 2 (EU): districts and plants from EU_ALL_PLANTS
+    DISTRICTS_BY_PAGE['2'] = [...new Set(EU_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
+    PLANTS_BY_PAGE['2'] = EU_ALL_PLANTS
+      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:0; })
+      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; });
+
+    // Page 3 (Registry): districts and plants from REGISTRY_ALL
+    DISTRICTS_BY_PAGE['3'] = [...new Set(REGISTRY_ALL.map(function(p){return p.dd;}).filter(Boolean))].sort();
+    PLANTS_BY_PAGE['3'] = REGISTRY_ALL
+      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:0; })
+      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.cs, code:null }; });
+
+    // Keep backward-compat globals (used by fp() and msInitAll dept build)
+    DISTRICTS_SORTED = [...new Set([...DISTRICTS_BY_PAGE['1'],...DISTRICTS_BY_PAGE['2'],...DISTRICTS_BY_PAGE['3']])].sort();
+    PLANTS_SORTED    = RAW.slim_plants.slice().sort(function(a,b){ return a.c-b.c; });
+
+    /* --- Dynamic date range for filter inputs (computed from live data) --- */
+    function setDateRange_(fromId, toId, minD, maxD) {
+      var fe=document.getElementById(fromId), te=document.getElementById(toId);
+      if(fe){ fe.min=minD; fe.max=maxD; } if(te){ te.min=minD; te.max=maxD; }
+    }
+    // Page 1: complaint dates (rd field on matched plants)
+    var _compDates=[];
+    RAW.slim_plants.forEach(function(p){ (p.cl||[]).forEach(function(c){ if(c.rd) _compDates.push(c.rd); }); });
+    _compDates.sort();
+    if(_compDates.length) setDateRange_('f1from','f1to',_compDates[0],_compDates[_compDates.length-1]);
+    // Page 2 & 3: EU drill dates
+    var _euDates=EU_ALL_PLANTS.map(function(p){return p.ed;}).filter(Boolean).sort();
+    if(_euDates.length){ setDateRange_('f2from','f2to',_euDates[0],_euDates[_euDates.length-1]); setDateRange_('f3from','f3to',_euDates[0],_euDates[_euDates.length-1]); }
 
     /* --- Stamp update --- */
     const metaObj = metaToObject(metaVals);
@@ -2422,12 +2451,14 @@ function rp2(){
   const cfrom=null, cto=null;
   const euDateLabel = euFrom||euTo ? ` — ${euFrom||'start'} to ${euTo||'today'}` : ' — May 2025 to Apr 2026 (all)';
   const cDateLabel  = ' — Aug 2024 to Apr 2026 (all)';
-  const selDist2 = msGet('ms2d');
+  const selDist2  = msGet('ms2d');
+  const selPlant2 = msGet('ms2p');  // district|hospital keys from EU_ALL_PLANTS
   const selDistStr2 = selDist2[0] || '';
 
   // ── EU-ONLY data: ALL EU plants (not capped to 441 matched) ─────────────
   const euAll = EU_ALL_PLANTS.filter(function(p) {
-    if (selDist2.length && !selDist2.includes(p.dd)) return false;
+    if (selDist2.length  && !selDist2.includes(p.dd)) return false;
+    if (selPlant2.length && !selPlant2.includes(p.dd+'|'+p.sf)) return false;
     if (euFrom && (!p.ed || p.ed < euFrom)) return false;
     if (euTo   && (!p.ed || p.ed > euTo))   return false;
     return true;
@@ -2443,7 +2474,8 @@ function rp2(){
   // ── CROSS-SOURCE data: ALL registry assets with EU+complaint data (direct join) ──
   // No ONA mapping needed — EU drills, complaints, and registry share the same identifiers
   const euCrossFiltered = EU_CROSS.filter(function(p) {
-    if (selDist2.length && !selDist2.includes(p.dd)) return false;
+    if (selDist2.length  && !selDist2.includes(p.dd)) return false;
+    if (selPlant2.length && !selPlant2.includes(p.dd+'|'+p.sf)) return false;
     if (euFrom && (!p.ed || p.ed < euFrom)) return false;
     if (euTo   && (!p.ed || p.ed > euTo))   return false;
     return true;
@@ -3532,9 +3564,12 @@ function rp3(){
   const drillDateLabel = drillFrom||drillTo ? ` — ${drillFrom||'start'} to ${drillTo||'today'}` : ' — May 2025 to Apr 2026 (all)';
 
   // ── Registry funnel top: ALL registry assets (not capped to 441 matched) ──
-  const selDist3 = msGet('ms3d');
+  const selDist3  = msGet('ms3d');
+  const selPlant3 = msGet('ms3p');  // district|hospital keys from REGISTRY_ALL
   const regAll = REGISTRY_ALL.filter(function(p) {
-    return !selDist3.length || selDist3.includes(p.dd);
+    if (selDist3.length  && !selDist3.includes(p.dd)) return false;
+    if (selPlant3.length && !selPlant3.includes(p.dd+'|'+p.sf)) return false;
+    return true;
   });
   const N        = regAll.length;
   const hasQR    = regAll.filter(function(p){ return p.hq; });
@@ -4619,8 +4654,10 @@ function msGet(id) {
 // Populated by loadDashboard() after data is fetched
 var DISTRICTS_SORTED = [];
 var PLANTS_SORTED    = [];
-
-var DEPTS_SORTED = [];
+var DEPTS_SORTED     = [];
+// Per-page lists (data source specific to each page)
+var DISTRICTS_BY_PAGE = { '1':[], '2':[], '3':[] };
+var PLANTS_BY_PAGE    = { '1':[], '2':[], '3':[] };
 
 function msInitAll() {
   // Build sorted department list from loaded plants
@@ -4657,11 +4694,15 @@ function msRenderDept(id) {
 function msRenderDistricts(id) {
   const list = document.getElementById(id+'-list');
   if(!list) return;
-  const sel = MS_STATE[id]||new Set();
+  const cfg  = MS_CONFIG[id] || {};
+  const page = cfg.page || '1';
+  const pool = (DISTRICTS_BY_PAGE[page] && DISTRICTS_BY_PAGE[page].length)
+               ? DISTRICTS_BY_PAGE[page] : DISTRICTS_SORTED;
+  const sel    = MS_STATE[id]||new Set();
   const search = (document.getElementById(id+'-search')||{}).value||'';
-  const items = DISTRICTS_SORTED.filter(d => !search || d.toLowerCase().includes(search.toLowerCase()));
+  const items  = pool.filter(d => !search || d.toLowerCase().includes(search.toLowerCase()));
   list.innerHTML = items.length ? items.map(d => `
-    <label class="ms-item ${sel.has(d)?'selected':''}" onclick="msToggleItem('${id}','${d}',this)"> <input type="checkbox" ${sel.has(d)?'checked':''} onchange="msToggleItem('${id}','${d}',this.closest('.ms-item'))" onclick="event.stopPropagation()"> <span class="ms-item-label">${d}</span> </label>`).join('') 
+    <label class="ms-item ${sel.has(d)?'selected':''}" onclick="msToggleItem('${id}','${d}',this)"> <input type="checkbox" ${sel.has(d)?'checked':''} onchange="msToggleItem('${id}','${d}',this.closest('.ms-item'))" onclick="event.stopPropagation()"> <span class="ms-item-label">${d}</span> </label>`).join('')
     : '<div class="ms-empty">No districts found</div>';
   msUpdateFooter(id, items.length);
 }
@@ -4669,22 +4710,28 @@ function msRenderDistricts(id) {
 function msRenderPlants(id, districtFilter) {
   const list = document.getElementById(id+'-list');
   if(!list) return;
-  const sel = MS_STATE[id]||new Set();
+  const cfg  = MS_CONFIG[id] || {};
+  const page = cfg.page || '1';
+  const pool = (PLANTS_BY_PAGE[page] && PLANTS_BY_PAGE[page].length)
+               ? PLANTS_BY_PAGE[page] : PLANTS_SORTED.map(function(p){
+                   return { val:String(p.c), label:(p.sf||p.of||'').slice(0,38), dist:p.dd, cap:p.cs, code:'#'+p.c };
+                 });
+  const sel    = MS_STATE[id]||new Set();
   const search = (document.getElementById(id+'-search')||{}).value||'';
-  let plants = PLANTS_SORTED;
-  if(districtFilter && districtFilter.length) plants = plants.filter(p=>districtFilter.includes(p.dd));
+  let plants = districtFilter && districtFilter.length
+               ? pool.filter(function(p){ return districtFilter.includes(p.dist); })
+               : pool;
   if(search) {
     const q = search.toLowerCase();
-    plants = plants.filter(p=>{
-      const lbl = `#${p.c} ${(p.sf||p.of)} ${p.dd}`.toLowerCase();
-      return lbl.includes(q);
+    plants = plants.filter(function(p){
+      return (p.code||'' + ' ' + p.label + ' ' + p.dist).toLowerCase().includes(q);
     });
   }
-  list.innerHTML = plants.length ? plants.map(p => {
-    const label = `${(p.sf||p.of).slice(0,38)}`;
-    const code = `#${p.c}`;
-    const v = String(p.c);
-    return `<label class="ms-item ${sel.has(v)?'selected':''}" onclick="msToggleItem('${id}','${v}',this)"> <input type="checkbox" ${sel.has(v)?'checked':''} onchange="msToggleItem('${id}','${v}',this.closest('.ms-item'))" onclick="event.stopPropagation()"> <span class="ms-item-code">${code}</span> <span class="ms-item-label" title="${p.dd} — ${(p.sf||p.of)}">${label} <span style="color:var(--muted);font-size:10px">(${p.dd})</span></span> </label>`;
+  list.innerHTML = plants.length ? plants.map(function(p) {
+    const codeHtml = p.code
+      ? `<span class="ms-item-code">${p.code}</span> `
+      : `<span class="ms-item-code" style="color:var(--muted);font-size:9px">${p.cap != null ? p.cap+'L' : ''}</span> `;
+    return `<label class="ms-item ${sel.has(p.val)?'selected':''}" onclick="msToggleItem('${id}','${p.val}',this)"> <input type="checkbox" ${sel.has(p.val)?'checked':''} onchange="msToggleItem('${id}','${p.val}',this.closest('.ms-item'))" onclick="event.stopPropagation()"> ${codeHtml}<span class="ms-item-label" title="${p.dist} — ${p.label}">${p.label} <span style="color:var(--muted);font-size:10px">(${p.dist})</span></span> </label>`;
   }).join('')
   : '<div class="ms-empty">No plants found</div>';
   msUpdateFooter(id, plants.length);
