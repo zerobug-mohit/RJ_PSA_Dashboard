@@ -631,6 +631,7 @@ var ONA_MONTHLY_ALL = []; // ALL ONA drills aggregated by month+district
 var EU_ALL_PLANTS   = []; // ALL EU plant identities — not limited to 441 matched
 var EU_MONTHLY_ALL  = []; // ALL EU drills aggregated by month+district
 var REGISTRY_ALL    = []; // ALL 515 registry assets for Page 3 funnel
+var EU_CROSS        = []; // Direct EU×Registry×Complaints — all registry assets with EU/complaint data
 var FC  = {};
 
 /* ---------- Sheets API v4 fetch ---------- */
@@ -825,6 +826,7 @@ async function loadDashboard() {
     const euAllVals       = await fetchTab('eu_all_plants').catch(function(){ return []; });
     const euMonthVals     = await fetchTab('eu_monthly_all').catch(function(){ return []; });
     const registryVals    = await fetchTab('registry_plants').catch(function(){ return []; });
+    const euCrossVals     = await fetchTab('eu_direct_cross').catch(function(){ return []; });
     const metaVals        = await fetchTab('meta').catch(function() { return []; });
 
     /* --- plants → RAW.slim_plants --- */
@@ -943,6 +945,41 @@ async function loadDashboard() {
         avgP: r.avg_purity !== '' ? +r.avg_purity : null,
       };
     });
+
+    /* --- EU_CROSS: direct EU×Registry×Complaints join (no ONA mapping) --- */
+    // Field names mirror RAW.slim_plants so eufc/eufcDraw functions work unchanged.
+    EU_CROSS = rowsToObjects(euCrossVals).map(function(r) {
+      var comps = [];
+      try { comps = r.complaints ? JSON.parse(r.complaints) : []; } catch(_) {}
+      var active = comps.filter(function(c){ return c.st !== 'Resolved'; });
+      return {
+        dd:   r.district  || '',
+        sf:   r.hospital  || '',
+        cs:   r.capacity  !== '' ? +r.capacity : null,
+        eq:   r.qr_suffix || '',
+        hq:   isTruthy(r.has_qr),
+        sei:  r.equipment_status  || '',
+        sii:  r.inventory_status  || '',
+        smd:  normDate_(r.moic_verified_date) || null,
+        iv:   isTruthy(r.is_verified),
+        es:   r.eu_status  || '',
+        ep:   r.eu_purity  !== '' ? +r.eu_purity  : null,
+        epr:  r.eu_hours   !== '' ? +r.eu_hours   : null,
+        ed:   normDate_(r.eu_date) || null,
+        el:   isTruthy(r.eu_leakage),
+        ef:   r.eu_fire_safety || '',
+        eu_drill_count: +r.eu_drill_count || 0,
+        // Complaint fields (same names as slim_plants withMetrics adds)
+        ct:   +r.complaint_count || 0,
+        ha:   isTruthy(r.has_active_complaint),
+        cl:   comps,
+        // Dummy ONA fields (not available in this cross-reference)
+        c: null, os: '', osc: '', op: null, od: null, or_: '',
+        re: false, rr: false, ds: null, dept: '', co: null,
+        active_comps: active.length,
+      };
+    });
+    Logger.log && console.log && console.log('EU_CROSS loaded: ' + EU_CROSS.length + ' registry assets');
 
     /* --- REGISTRY_ALL: all 515 registry assets for Page 3 funnel --- */
     REGISTRY_ALL = rowsToObjects(registryVals).map(function(r) {
@@ -2403,18 +2440,25 @@ function rp2(){
   const euGP   = euAll.filter(function(p){ return p.ep != null && p.ep >= 93; });
   const euNR   = euAll.filter(function(p){ return p.ep === 0 || (p.epr === 0 && p.ep === 0); });
 
-  // ── CROSS-SOURCE data: 441 matched plants (EU + Complaints linked) ───────
-  const baseps = fp(RAW.slim_plants,'2').filter(function(p){
-    if (!p.es) return false;
+  // ── CROSS-SOURCE data: ALL registry assets with EU+complaint data (direct join) ──
+  // No ONA mapping needed — EU drills, complaints, and registry share the same identifiers
+  const euCrossFiltered = EU_CROSS.filter(function(p) {
+    if (selDist2.length && !selDist2.includes(p.dd)) return false;
     if (euFrom && (!p.ed || p.ed < euFrom)) return false;
     if (euTo   && (!p.ed || p.ed > euTo))   return false;
     return true;
   });
-  const ps = baseps.map(function(p){ return withMetrics(p, cfrom, cto); });
-  const matchedN2 = ps.length;
-  const act = ps.filter(function(p){ return p.ha; });
-  const rcomp = ps.filter(function(p){ return p.ar; });
-  const avgRes = avg(rcomp.map(function(p){ return p.ar; }));
+  // Plants that have at least EU data or complaint data
+  const euCrossWithData = euCrossFiltered.filter(function(p){ return p.eu_drill_count > 0 || p.ct > 0; });
+  const matchedN2 = euCrossWithData.length;
+  const act  = euCrossWithData.filter(function(p){ return p.ha; });
+  const rcomp = euCrossWithData.filter(function(p){
+    return p.cl && p.cl.some(function(c){ return c.st==='Resolved' && c.tr!=null; });
+  });
+  const avgRes = rcomp.length ? avg(rcomp.map(function(p){
+    var res = p.cl.filter(function(c){ return c.st==='Resolved'&&c.tr!=null; });
+    return res.length ? avg(res.map(function(c){return c.tr;})) : null;
+  }).filter(function(v){return v!=null;})) : null;
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('k2').innerHTML=[
@@ -2436,26 +2480,25 @@ function rp2(){
     kc('Purity = 0 (not running)', euNR.length, 'Excluded from averages', 'a',
       'Plants where purity = 0 at time of drill — not running. From ALL EU data.',
       'EU drill date filter'+euDateLabel,'m-purity'),
-    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' matched', 'r',
-      'Plants with unresolved complaint. Limited to '+matchedN2+' plants matched between EU and the complaints registry.',
-      'Complaint date filter'+cDateLabel+' · '+matchedN2+' matched plants','m-complaints'),
-    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN2+' matched', '',
-      'Mean raise→MOIC resolution days. Based on '+matchedN2+' registry-matched plants.',
-      'Complaint date filter'+cDateLabel,'m-resolution'),
+    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' with data', 'r',
+      'Plants with unresolved complaint. Uses all registry assets directly matched to EU drills and complaints — no ONA mapping required.',
+      'Direct EU×Registry×Complaints join · '+matchedN2+' assets with data','m-complaints'),
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN2+' assets', '',
+      'Mean raise→MOIC resolution days across all registry assets with complaint data.',
+      'Direct join — all registry assets','m-resolution'),
   ].join('');
 
   const euDrillPeriod = euFrom||euTo ? `EU drill: ${euFrom||'start'} → ${euTo||'today'}` : 'EU drill: May 2025 – Apr 2026 (ALL EU plants)';
-  const cPeriod2 = `${matchedN2} matched plants · Complaints: Aug 2024 – Apr 2026`;
+  const cPeriod2 = `${matchedN2} registry assets with EU/complaint data (direct join)`;
   setPeriod('p2tl-period',   euDrillPeriod);
   setPeriod('p2fc-period',   cPeriod2);
   setPeriod('p2pur-period',  euDrillPeriod);
   setPeriod('p2disc-period', euDrillPeriod + ' · ' + cPeriod2);
 
-  const p2AllowedCodes = new Set(baseps.map(function(p){ return String(p.c); }));
   // EU timeline uses ALL EU data via EU_MONTHLY_ALL
   eutlApplyAllEU(selDistStr2, euFrom, euTo);
-  // eufc widget uses only matched plants (cross-source)
-  eufcDraw(selDistStr2, null, null, '', euFrom, euTo, p2AllowedCodes);
+  // eufc widget uses EU_CROSS (direct registry→EU→complaints join, no ONA mapping)
+  eufcDrawCross(euCrossFiltered);
   // EU purity uses ALL EU data
   pur2DrawAllEU(selDistStr2, euFrom, euTo);
   // EU Intelligence uses ALL EU plants
@@ -2961,6 +3004,28 @@ const EUFC = {
 let eufcMode='overview', eufcActiveGroup=null, eufcActiveDistrict='', eufcFromD=null, eufcToD=null;
 let eufcEuStatus='', eufcEuFrom=null, eufcEuTo=null;
 let eufcAllowedCodes = null;
+
+/* eufcDrawCross: EU vs Complaint status using EU_CROSS (direct registry join)
+   Replaces eufcDraw on Page 2 — no longer limited to 441 mapped plants.  */
+function eufcDrawCross(plants) {
+  eufcMode = 'overview';
+  eufcActiveDistrict = '';
+  eufcAllowedCodes   = null;
+  eufcEuFrom = null; eufcEuTo = null;
+  // Temporarily override eufcFilteredPlants to use EU_CROSS
+  var prev = eufcFilteredPlants;
+  eufcFilteredPlants = function() { return plants.filter(function(p){ return !!p.es; }); };
+  eufcDrawOverview();
+  eufcFilteredPlants = prev;
+  // Note on data source
+  var container = document.getElementById('eufc-container');
+  if (container) {
+    var note = document.createElement('div');
+    note.style.cssText = 'font-size:11px;color:#64748b;padding:6px 8px;margin-top:4px;background:#f8fafc;border-radius:4px';
+    note.textContent   = 'Based on direct EU×Registry×Complaints join — all ' + plants.length + ' registry assets, no ONA mapping required';
+    container.appendChild(note);
+  }
+}
 
 function eufcDraw(district, fromD, toD, euStatus, euFrom, euTo, allowedCodes) {
   eufcActiveDistrict = district || '';

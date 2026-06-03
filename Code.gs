@@ -683,6 +683,97 @@ function deriveDashboard() {
   if (missesE.length) Logger.log('Step E unmatched QRs (' + missesE.length + '): ' + missesE.slice(0, 10).join(', '));
 
   // ------------------------------------------------------------------
+  // DIRECT CROSS-REFERENCE: EU × Registry × Complaints
+  // No ONA mapping needed — EU drills, Complaints, and Registry all share
+  // the same district/hospital/capacity/QR identifiers from the same portal.
+  // Iterates ALL 515 registry assets; matches EU drills and complaints directly.
+  // ------------------------------------------------------------------
+  const euDirectCrossHeaders = [
+    'district','hospital','capacity','qr_suffix','has_qr',
+    'equipment_status','inventory_status','moic_verified_date','is_verified',
+    'eu_status','eu_purity','eu_hours','eu_date','eu_leakage','eu_fire_safety','eu_drill_count',
+    'complaint_count','has_active_complaint','complaints',
+  ];
+
+  function daysDiff2(a, b) { return (a && b) ? Math.round((b - a) / 86400000) : null; }
+
+  const euDirectCrossRows = [];
+  var euDirectMatched = 0;
+
+  regRows.forEach(function(r) {
+    var regDist = normName(r['District Name'] || r['_col1'] || '');
+    var regHosp = normName(r['Hospital Name'] || r['_col2'] || '');
+    var regCap  = parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col9'] || '');
+    var qr      = qrSuffix(r['QR Code'] || r['_col4'] || '');
+    var sii     = String(r['Inventory Status'] || r['_col7'] || '').trim();
+
+    // Match EU drills to this registry asset (same logic as Step D but for ALL assets)
+    var euHits = euParsed.filter(function(d) {
+      if (d.distNorm !== regDist && d.distDisp !== regDist) return false;
+      if (d.hospNorm !== regHosp) {
+        if (!d.hospNorm.includes(regHosp) && !regHosp.includes(d.hospNorm)) {
+          var fw = regHosp.split(' ')[0];
+          if (fw.length < 4 || !d.hospNorm.includes(fw)) return false;
+        }
+      }
+      if (regCap && d.cap && d.cap !== regCap) return false;
+      return true;
+    });
+
+    var sortedEU = euHits.filter(function(d){return d.date;}).sort(function(a,b){return a.date>b.date?-1:1;});
+    var latestEU = sortedEU[0] || euHits[0];
+
+    // Match complaints to this registry asset (via QR code — same portal)
+    var regComps = [];
+    if (qr) {
+      allComps.forEach(function(c) {
+        if (qrSuffix(String(c['Service Provider QR Code'] || c['_col3'] || '')) !== qr) return;
+        var raiseD  = fromExcel(c['Complaint Raise Date']   || c['_col6'] || '');
+        var attendD = fromExcel(c['Complaint Attend date']  || c['_col7'] || '');
+        var closeD  = fromExcel(c['Complaint Close date']   || c['_col8'] || '');
+        var moicD   = fromExcel(c['Complaint Close by MOIC']|| c['_col9'] || '');
+        var status;
+        if (moicD) status = 'Resolved';
+        else if (closeD) status = 'Pending MOIC Verification';
+        else if (attendD) status = 'Under Repair';
+        else status = 'Pending Attendance';
+        regComps.push({
+          rd: toISO(raiseD), st: status,
+          rs: daysDiff2(raiseD, attendD), rp: daysDiff2(attendD, closeD),
+          vr: daysDiff2(closeD, moicD),  tr: daysDiff2(raiseD, moicD),
+          dh: parseFloat(c['Total Downtime'] || c['_col13'] || '') || null,
+        });
+      });
+    }
+
+    var hasActive = regComps.some(function(c){ return c.st !== 'Resolved'; });
+    if (euHits.length > 0 || regComps.length > 0) euDirectMatched++;
+
+    euDirectCrossRows.push([
+      districtDisplay(r['District Name'] || r['_col1'] || ''),
+      String(r['Hospital Name'] || r['_col2'] || '').trim(),
+      regCap != null ? regCap : '',
+      qr,
+      qr ? 'true' : 'false',
+      String(r['Equipment Status']   || r['_col8'] || '').trim(),
+      sii,
+      toISO(fromDMY(r['MOIC Verified Date'] || r['_col6'] || '')),
+      (sii === 'Verified Inventory') ? 'true' : 'false',
+      latestEU ? latestEU.es  : '',
+      latestEU && latestEU.ep  != null ? Number(latestEU.ep).toFixed(1)  : '',
+      latestEU && latestEU.epr != null ? Number(latestEU.epr).toFixed(1) : '',
+      latestEU ? latestEU.ed  : '',
+      latestEU ? String(latestEU.el) : '',
+      latestEU ? latestEU.ef  : '',
+      euHits.length,
+      regComps.length,
+      hasActive ? 'true' : 'false',
+      JSON.stringify(regComps),
+    ]);
+  });
+  Logger.log('EU direct cross: ' + euDirectMatched + '/' + regRows.length + ' registry assets have EU or complaint data');
+
+  // ------------------------------------------------------------------
   // STEP F — Reporting flags (per spec §4)
   // ------------------------------------------------------------------
   const REF_DATE      = new Date('2026-04-17T00:00:00Z');
@@ -899,9 +990,10 @@ function deriveDashboard() {
   writeTab_(dashSS, 'dist_p1',           distP1Headers,         distP1Rows);
   writeTab_(dashSS, 'ona_all_plants',    onaAllPlantsHeaders,   onaAllPlantsRows);
   writeTab_(dashSS, 'ona_monthly_all',   onaMonthlyHeaders,     onaMonthlyRows);
-  writeTab_(dashSS, 'eu_all_plants',     euAllPlantsHeaders,    euAllPlantsRows);
-  writeTab_(dashSS, 'eu_monthly_all',    euMonthlyHeaders,      euMonthlyRows);
-  writeTab_(dashSS, 'registry_plants',   registryPlantsHeaders, registryPlantsRows);
+  writeTab_(dashSS, 'eu_all_plants',      euAllPlantsHeaders,    euAllPlantsRows);
+  writeTab_(dashSS, 'eu_monthly_all',     euMonthlyHeaders,      euMonthlyRows);
+  writeTab_(dashSS, 'registry_plants',    registryPlantsHeaders, registryPlantsRows);
+  writeTab_(dashSS, 'eu_direct_cross',    euDirectCrossHeaders,  euDirectCrossRows);
 
   const builtAt = new Date().toISOString();
   writeMeta_(dashSS, {
