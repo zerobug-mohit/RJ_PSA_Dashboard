@@ -1703,18 +1703,18 @@ function rp1(){
   // ── KPIs — ONA-only (left group) and cross-source (right group) ───────────
   document.getElementById('k1').innerHTML=[
     // ONA-only KPIs — full ONA dataset
-    kc('Total ONA plants', onaAll.length, 'All ONA mock-drill submissions', '',
+    kc('Total ONA plants', onaAll.length, onaAll.length+' ONA plant identities in mock-drill data', '',
       'Total unique PSA plant identities found in ALL ONA mock-drill data (not limited to registry-matched plants). Filtered by current district/department selection.',
-      'All ONA drills — no registry match required'),
-    kc('Functional (ONA)', onaFunc.length, pct(onaFunc.length, onaAll.length), 'g',
-      'Plants where the most recent ONA drill recorded status = Functional. Drawn from ALL ONA data.',
-      'Latest drill per ONA plant identity', 'm-ona-status'),
-    kc('Non-functional (ONA)', onaNF.length, pct(onaNF.length, onaAll.length), 'r',
-      'Plants where the most recent ONA drill recorded status = Not-Functional. Drawn from ALL ONA data.',
-      'Latest drill per ONA plant identity', 'm-ona-status'),
-    kc('Avg purity — functional', avgPurAll ? avgPurAll+'%' : '—', 'Mean of ONA readings', avgPurAll>=93?'g':avgPurAll>=85?'a':'r',
+      onaAll.length+' ONA plants — no registry match required'),
+    kc('Functional (ONA)', onaFunc.length, pct(onaFunc.length, onaAll.length)+' of '+onaAll.length+' ONA plants', 'g',
+      'Plants where the most recent ONA drill recorded status = Functional. Drawn from ALL '+onaAll.length+' ONA plants.',
+      onaAll.length+' ONA plants · latest drill per identity', 'm-ona-status'),
+    kc('Non-functional (ONA)', onaNF.length, pct(onaNF.length, onaAll.length)+' of '+onaAll.length+' ONA plants', 'r',
+      'Plants where the most recent ONA drill recorded status = Not-Functional. Drawn from ALL '+onaAll.length+' ONA plants.',
+      onaAll.length+' ONA plants · latest drill per identity', 'm-ona-status'),
+    kc('Avg purity — functional', avgPurAll ? avgPurAll+'%' : '—', 'Mean across '+onaFunc.length+' functional ONA plants', avgPurAll>=93?'g':avgPurAll>=85?'a':'r',
       'Mean purity across all functional ONA plants with a valid purity reading (>0%). WHO threshold = 93%.',
-      'All ONA drills — no registry match required', 'm-purity'),
+      onaAll.length+' ONA plants — no registry match required', 'm-purity'),
     // Cross-source KPIs — 441 matched plants only
     kc('Plants with ≥1 complaint', wc.length, pct(wc.length, matchedN)+'  of '+matchedN+' matched', '',
       'Plants with at least one complaint in the selected date range. Limited to '+matchedN+' plants that are matched between ONA and the complaints registry.',
@@ -1736,12 +1736,12 @@ function rp1(){
   const p1AllowedCodes = new Set(baseps.map(function(p){ return String(p.c); }));
   const selDistStr = selDist[0] || '';
 
-  setPeriod('p1a-period', onaFixed + ' (ALL ONA plants)');
+  setPeriod('p1a-period', onaAll.length+' ONA plants · '+onaFixed);
   // ONA timeline now uses full ONA data (tlApply uses ONA_MONTHLY_ALL)
   tlApplyAllONA(selDistStr, fromD, toD);
   setPeriod('p1b-period', `${matchedN} matched plants · ${compPeriod}`);
-  setPeriod('p1f-period', onaFixed + ' (ALL ONA plants)');
-  setPeriod('p1disc-period', `${onaFixed} · ${compPeriod}`);
+  setPeriod('p1f-period', onaAll.length+' ONA plants · '+onaFixed);
+  setPeriod('p1disc-period', `${onaAll.length} ONA plants · ${matchedN} matched · ${compPeriod}`);
 
   // FC widget uses only matched plants (cross-source)
   fcDraw(selDistStr, fromD, toD, p1AllowedCodes);
@@ -2462,38 +2462,38 @@ function rp2(){
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('k2').innerHTML=[
-    kc('Total EU plants', euAll.length, 'All e-Upkaran submissions', '',
+    kc('Total EU plants', euAll.length, euAll.length+' EU plant identities in mock-drill data', '',
       'Total unique PSA plant identities found in ALL e-Upkaran drill data (not limited to registry-matched plants).',
-      'All EU drills — no registry match required'),
-    kc('Functional', euFunc.length, pct(euFunc.length, euAll.length), 'g',
-      'Plants where latest e-Upkaran status = Functional. From ALL EU data.',
-      'EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('Functional Installed', euFI.length, pct(euFI.length, euAll.length), 'b',
-      'Plants where latest e-Upkaran status = Functional Installed.',
-      'EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('In Complaint / NF Repairable', euNF, pct(euNF, euAll.length), 'r',
-      'Plants where latest e-Upkaran status = In Complaint or Non Functional Repairable.',
-      'EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('Purity ≥ 93%', euGP.length, pct(euGP.length, euAll.length), 'g',
-      'Plants with latest EU purity ≥ 93% (WHO standard). From ALL EU data.',
-      'EU drill date filter'+euDateLabel,'m-purity'),
-    kc('Purity = 0 (not running)', euNR.length, 'Excluded from averages', 'a',
-      'Plants where purity = 0 at time of drill — not running. From ALL EU data.',
-      'EU drill date filter'+euDateLabel,'m-purity'),
-    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' with data', 'r',
+      euAll.length+' EU plants — no registry match required'),
+    kc('Functional', euFunc.length, pct(euFunc.length, euAll.length)+' of '+euAll.length+' EU plants', 'g',
+      'Plants where latest e-Upkaran status = Functional. From ALL '+euAll.length+' EU plants.',
+      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-eu-status'),
+    kc('Functional Installed', euFI.length, pct(euFI.length, euAll.length)+' of '+euAll.length+' EU plants', 'b',
+      'Plants where latest e-Upkaran status = Functional Installed. From ALL '+euAll.length+' EU plants.',
+      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-eu-status'),
+    kc('In Complaint / NF Repairable', euNF, pct(euNF, euAll.length)+' of '+euAll.length+' EU plants', 'r',
+      'Plants where latest e-Upkaran status = In Complaint or Non Functional Repairable. From ALL '+euAll.length+' EU plants.',
+      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-eu-status'),
+    kc('Purity ≥ 93%', euGP.length, pct(euGP.length, euAll.length)+' of '+euAll.length+' EU plants', 'g',
+      'Plants with latest EU purity ≥ 93% (WHO standard). From ALL '+euAll.length+' EU plants.',
+      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-purity'),
+    kc('Purity = 0 (not running)', euNR.length, 'Excluded from averages · '+euAll.length+' EU plants', 'a',
+      'Plants where purity = 0 at time of drill — not running. From ALL '+euAll.length+' EU plants.',
+      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-purity'),
+    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' plants with data', 'r',
       'Plants with unresolved complaint. Uses all registry assets directly matched to EU drills and complaints — no ONA mapping required.',
-      'Direct EU×Registry×Complaints join · '+matchedN2+' assets with data','m-complaints'),
-    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN2+' assets', '',
+      matchedN2+' plants with EU/complaint data (direct join)','m-complaints'),
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN2+' plants with data', '',
       'Mean raise→MOIC resolution days across all registry assets with complaint data.',
-      'Direct join — all registry assets','m-resolution'),
+      matchedN2+' plants with EU/complaint data (direct join)','m-resolution'),
   ].join('');
 
-  const euDrillPeriod = euFrom||euTo ? `EU drill: ${euFrom||'start'} → ${euTo||'today'}` : 'EU drill: May 2025 – Apr 2026 (ALL EU plants)';
-  const cPeriod2 = `${matchedN2} registry assets with EU/complaint data (direct join)`;
+  const euDrillPeriod = euFrom||euTo ? `${euAll.length} EU plants · EU drill: ${euFrom||'start'} → ${euTo||'today'}` : `${euAll.length} EU plants · EU drill: May 2025 – Apr 2026`;
+  const cPeriod2 = `${matchedN2} plants with EU/complaint data (direct join)`;
   setPeriod('p2tl-period',   euDrillPeriod);
   setPeriod('p2fc-period',   cPeriod2);
   setPeriod('p2pur-period',  euDrillPeriod);
-  setPeriod('p2disc-period', euDrillPeriod + ' · ' + cPeriod2);
+  setPeriod('p2disc-period', euDrillPeriod + ' · ' + matchedN2 + ' cross-referenced');
 
   // EU timeline uses ALL EU data via EU_MONTHLY_ALL
   eutlApplyAllEU(selDistStr2, euFrom, euTo);
@@ -3565,39 +3565,39 @@ function rp3(){
   const pctRep=verified.length?Math.round(displayRep.length/verified.length*100):0;
 
   document.getElementById('k3').innerHTML=[
-    kc('Total in registry', N, 'All '+N+' PSA assets in Stock on Hand', '',
+    kc('Total in registry', N, N+' PSA assets in Stock on Hand', '',
       'Total PSA plant assets in the Stock on Hand registry. This is the full registry count — not limited to mapping-matched plants.',
-      'Stock on Hand registry — ALL assets'),
-    kc('Has QR code', hasQR.length, pct(hasQR.length,N), '',
+      N+' assets in Stock on Hand registry'),
+    kc('Has QR code', hasQR.length, pct(hasQR.length,N)+' of '+N+' registry assets', '',
       'Registry assets with a valid QR code assigned. Without a QR code a plant cannot be tracked in e-Upkaran.',
-      'Stock on Hand — as of data extract'),
-    kc('No QR code', noQR.length, pct(noQR.length,N)+' — cannot track in e-Upkaran', 'a',
+      N+' registry assets · Stock on Hand'),
+    kc('No QR code', noQR.length, pct(noQR.length,N)+' of '+N+' — cannot track in e-Upkaran', 'a',
       'Registry assets with no QR code. Cannot participate in mock-drill reporting.',
-      'Stock on Hand — as of data extract'),
-    kc('Verified inventory (with QR)', verified.length, pct(verified.length,hasQR.length)+' of QR assets', '',
+      N+' registry assets · Stock on Hand'),
+    kc('Verified inventory (with QR)', verified.length, pct(verified.length,hasQR.length)+' of '+hasQR.length+' QR assets', '',
       'Assets where Inventory Status = Verified Inventory — MOIC has physically confirmed the asset.',
-      'Stock on Hand — as of data extract','m-qr-coverage'),
-    kc('Unverified (with QR)', unverified.length, pct(unverified.length,hasQR.length), 'a',
+      hasQR.length+' QR-coded assets · Stock on Hand','m-qr-coverage'),
+    kc('Unverified (with QR)', unverified.length, pct(unverified.length,hasQR.length)+' of '+hasQR.length+' QR assets', 'a',
       'Assets with a QR code but not yet MOIC-verified.',
-      'Stock on Hand — as of data extract','m-qr-coverage'),
-    kc('Verified + reporting',displayRep.length,pct(displayRep.length,verified.length)+' of verified','g',
+      hasQR.length+' QR-coded assets · Stock on Hand','m-qr-coverage'),
+    kc('Verified + reporting',displayRep.length,pct(displayRep.length,verified.length)+' of '+verified.length+' verified plants','g',
       drillFrom||drillTo
         ? 'Verified plants with a mock-drill record in e-Upkaran within the selected drill date range.'
         : 'Verified plants with a mock-drill in e-Upkaran in the last 90 days (on or after 17 Jan 2026).',
-      'Drill date filter'+drillDateLabel,'m-reporting'),
-    kc('Verified, not reporting',displayNotRep.length,pct(displayNotRep.length,verified.length)+' gap','r',
+      verified.length+' verified plants · Drill date filter'+drillDateLabel,'m-reporting'),
+    kc('Verified, not reporting',displayNotRep.length,pct(displayNotRep.length,verified.length)+' gap of '+verified.length+' verified','r',
       drillFrom||drillTo
         ? 'Verified plants with NO mock-drill record within the selected drill date range.'
         : 'Verified plants with no mock-drill in e-Upkaran in the last 90 days. Includes never-reported plants.',
-      'Drill date filter'+drillDateLabel,'m-reporting'),
-    kc('% verified plants reporting',pctRep+'%','Key coverage metric',pctRep>=60?'g':pctRep>=40?'a':'r',
+      verified.length+' verified plants · Drill date filter'+drillDateLabel,'m-reporting'),
+    kc('% verified plants reporting',pctRep+'%','Key coverage metric — '+verified.length+' verified plants',pctRep>=60?'g':pctRep>=40?'a':'r',
       'Verified + reporting ÷ Total verified × 100.',
-      'Drill date filter'+drillDateLabel,'m-reporting'),
+      verified.length+' verified plants · Drill date filter'+drillDateLabel,'m-reporting'),
   ].join('');
 
   // Set period labels on all Page 3 charts
-  const stockPeriod = 'Stock on Hand — as of data extract (17 Apr 2026)';
-  const drillPeriod3 = drillFrom||drillTo ? `EU drill: ${drillFrom||'start'} → ${drillTo||'today'}` : 'EU drill: last 90 days (17 Jan – 17 Apr 2026)';
+  const stockPeriod = N+' registry assets · Stock on Hand (17 Apr 2026)';
+  const drillPeriod3 = drillFrom||drillTo ? `${verified.length} verified plants · EU drill: ${drillFrom||'start'} → ${drillTo||'today'}` : `${verified.length} verified plants · EU drill: last 90 days`;
   setPeriod('p3fun-period', `${stockPeriod} · Reporting: ${drillPeriod3}`);
   setPeriod('p3tbl-period', drillPeriod3);
 
