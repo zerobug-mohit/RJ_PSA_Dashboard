@@ -1066,8 +1066,10 @@ async function loadDashboard() {
     var _euDates=EU_ALL_PLANTS.map(function(p){return p.ed;}).filter(Boolean).sort();
     if(_euDates.length){ setDateRange_('f2from','f2to',_euDates[0],_euDates[_euDates.length-1]); setDateRange_('f3from','f3to',_euDates[0],_euDates[_euDates.length-1]); }
 
-    /* --- Stamp update --- */
+    /* --- Dataset totals (for "N records · M plants" labels) --- */
     const metaObj = metaToObject(metaVals);
+    // coverage_E is "matched/total" e.g. "563/620" — extract the total
+    COMPLAINTS_TOTAL = parseInt(((metaObj.coverage_E||'0/0').split('/')[1])) || 0;
     const stamEl  = document.querySelector('.stamp');
     if (stamEl) {
       const builtAt = metaObj.built_at;
@@ -1719,10 +1721,14 @@ function rp1(){
   const avgPurAll = onaPurs.length ? avg(onaPurs.map(function(p){ return p.op; })) : null;
   const onaPur0  = onaAll.filter(function(p){ return p.op === 0 || (p.op == null && p.od); });
 
-  // ── CROSS-SOURCE data: only 441 matched plants (ONA linked with Complaints) ─
+  // Record counts for this filtered view
+  const onaAllRecords = onaAll.reduce(function(s,p){ return s + (p.cnt||0); }, 0);
+
+  // ── CROSS-SOURCE data: only matched plants (ONA linked with Complaints) ─
   const baseps = fp(RAW.slim_plants,'1').filter(function(p){ return p.os; });
   const ps = baseps.map(function(p){ return withMetrics(p, fromD, toD); });
   const matchedN  = ps.length;
+  const compRecords = ps.reduce(function(s,p){ return s + (p.cl||[]).length; }, 0);
   const wc  = ps.filter(function(p){ return p.ct > 0; });
   const dfo = ps.filter(function(p){ return p.os==='Functional' && p.ha; });
   const dnf = ps.filter(function(p){ return p.os==='Not-Functional' && p.ct===0; });
@@ -1732,29 +1738,29 @@ function rp1(){
   // ── KPIs — ONA-only (left group) and cross-source (right group) ───────────
   document.getElementById('k1').innerHTML=[
     // ONA-only KPIs — full ONA dataset
-    kc('Total ONA plants', onaAll.length, onaAll.length+' ONA plant identities in mock-drill data', '',
+    kc('Total ONA plants', onaAll.length, onaAll.length+' plants · '+onaAllRecords+' drill records', '',
       'Total unique PSA plant identities found in ALL ONA mock-drill data (not limited to registry-matched plants). Filtered by current district/department selection.',
-      onaAll.length+' ONA plants — no registry match required'),
-    kc('Functional (ONA)', onaFunc.length, pct(onaFunc.length, onaAll.length)+' of '+onaAll.length+' ONA plants', 'g',
-      'Plants where the most recent ONA drill recorded status = Functional. Drawn from ALL '+onaAll.length+' ONA plants.',
-      onaAll.length+' ONA plants · latest drill per identity', 'm-ona-status'),
-    kc('Non-functional (ONA)', onaNF.length, pct(onaNF.length, onaAll.length)+' of '+onaAll.length+' ONA plants', 'r',
-      'Plants where the most recent ONA drill recorded status = Not-Functional. Drawn from ALL '+onaAll.length+' ONA plants.',
-      onaAll.length+' ONA plants · latest drill per identity', 'm-ona-status'),
-    kc('Avg purity — functional', avgPurAll ? avgPurAll+'%' : '—', 'Mean across '+onaFunc.length+' functional ONA plants', avgPurAll>=93?'g':avgPurAll>=85?'a':'r',
+      onaAll.length+' plants · '+onaAllRecords+' records — no registry match required'),
+    kc('Functional (ONA)', onaFunc.length, pct(onaFunc.length, onaAll.length)+' of '+onaAll.length+' plants', 'g',
+      'Plants where the most recent ONA drill recorded status = Functional. Drawn from ALL '+onaAll.length+' ONA plants ('+onaAllRecords+' records).',
+      onaAll.length+' plants · '+onaAllRecords+' records', 'm-ona-status'),
+    kc('Non-functional (ONA)', onaNF.length, pct(onaNF.length, onaAll.length)+' of '+onaAll.length+' plants', 'r',
+      'Plants where the most recent ONA drill recorded status = Not-Functional. Drawn from ALL '+onaAll.length+' ONA plants ('+onaAllRecords+' records).',
+      onaAll.length+' plants · '+onaAllRecords+' records', 'm-ona-status'),
+    kc('Avg purity — functional', avgPurAll ? avgPurAll+'%' : '—', 'Mean across '+onaFunc.length+' functional plants', avgPurAll>=93?'g':avgPurAll>=85?'a':'r',
       'Mean purity across all functional ONA plants with a valid purity reading (>0%). WHO threshold = 93%.',
-      onaAll.length+' ONA plants — no registry match required', 'm-purity'),
-    // Cross-source KPIs — 441 matched plants only
+      onaAll.length+' plants · '+onaAllRecords+' records', 'm-purity'),
+    // Cross-source KPIs — matched plants only
     kc('Plants with ≥1 complaint', wc.length, pct(wc.length, matchedN)+'  of '+matchedN+' matched', '',
-      'Plants with at least one complaint in the selected date range. Limited to '+matchedN+' plants that are matched between ONA and the complaints registry.',
-      'Complaint date filter'+dateLabel+' · '+matchedN+' matched plants', 'm-complaints'),
-    kc('Functional + open complaint', dfo.length, 'Discrepancy — '+matchedN+' matched', 'a',
-      'Functional (ONA) plants with an unresolved complaint. Based on '+matchedN+' registry-matched plants only.',
+      'Plants with at least one complaint in the selected date range. Limited to '+matchedN+' plants matched between ONA and complaints registry ('+COMPLAINTS_TOTAL+' total complaint records).',
+      matchedN+' matched plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
+    kc('Functional + open complaint', dfo.length, 'Discrepancy — '+matchedN+' plants · '+COMPLAINTS_TOTAL+' records', 'a',
+      'Functional (ONA) plants with an unresolved complaint. Based on '+matchedN+' registry-matched plants.',
       'ONA latest drill · Complaints'+dateLabel, 'm-discrepancy'),
-    kc('Non-functional, no complaint', dnf.length, 'Gap — '+matchedN+' matched', 'r',
-      'Not-Functional (ONA) plants with zero complaints raised. Based on '+matchedN+' registry-matched plants only.',
+    kc('Non-functional, no complaint', dnf.length, 'Gap — '+matchedN+' plants · '+COMPLAINTS_TOTAL+' records', 'r',
+      'Not-Functional (ONA) plants with zero complaints raised. Based on '+matchedN+' registry-matched plants.',
       'ONA latest drill · Complaints'+dateLabel, 'm-discrepancy'),
-    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN+' matched', '',
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN+' plants · '+COMPLAINTS_TOTAL+' records', '',
       'Mean raise→MOIC resolution days for resolved complaints. Based on '+matchedN+' registry-matched plants.',
       'Resolved complaints'+dateLabel, 'm-resolution'),
   ].join('');
@@ -1765,12 +1771,12 @@ function rp1(){
   const p1AllowedCodes = new Set(baseps.map(function(p){ return String(p.c); }));
   const selDistStr = selDist[0] || '';
 
-  setPeriod('p1a-period', onaAll.length+' ONA plants · '+onaFixed);
+  setPeriod('p1a-period', onaAll.length+' plants · '+onaAllRecords+' records · '+onaFixed);
   // ONA timeline now uses full ONA data (tlApply uses ONA_MONTHLY_ALL)
   tlApplyAllONA(selDistStr, fromD, toD);
-  setPeriod('p1b-period', `${matchedN} matched plants · ${compPeriod}`);
-  setPeriod('p1f-period', onaAll.length+' ONA plants · '+onaFixed);
-  setPeriod('p1disc-period', `${onaAll.length} ONA plants · ${matchedN} matched · ${compPeriod}`);
+  setPeriod('p1b-period', `${matchedN} matched plants · ${COMPLAINTS_TOTAL} complaint records · ${compPeriod}`);
+  setPeriod('p1f-period', onaAll.length+' plants · '+onaAllRecords+' records · '+onaFixed);
+  setPeriod('p1disc-period', `${onaAll.length} ONA plants (${onaAllRecords} records) · ${matchedN} matched · ${COMPLAINTS_TOTAL} complaint records`);
 
   // FC widget uses only matched plants (cross-source)
   fcDraw(selDistStr, fromD, toD, p1AllowedCodes);
@@ -2492,40 +2498,46 @@ function rp2(){
     return res.length ? avg(res.map(function(c){return c.tr;})) : null;
   }).filter(function(v){return v!=null;})) : null;
 
+  // Record counts for this filtered view
+  const euAllRecords = euAll.reduce(function(s,p){ return s + (p.cnt||0); }, 0);
+  const compRecords2 = euCrossWithData.reduce(function(s,p){ return s + (p.cl||[]).length; }, 0);
+
   // ── KPIs ─────────────────────────────────────────────────────────────────
   document.getElementById('k2').innerHTML=[
-    kc('Total EU plants', euAll.length, euAll.length+' EU plant identities in mock-drill data', '',
+    kc('Total EU plants', euAll.length, euAll.length+' plants · '+euAllRecords+' drill records', '',
       'Total unique PSA plant identities found in ALL e-Upkaran drill data (not limited to registry-matched plants).',
-      euAll.length+' EU plants — no registry match required'),
-    kc('Functional', euFunc.length, pct(euFunc.length, euAll.length)+' of '+euAll.length+' EU plants', 'g',
-      'Plants where latest e-Upkaran status = Functional. From ALL '+euAll.length+' EU plants.',
-      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('Functional Installed', euFI.length, pct(euFI.length, euAll.length)+' of '+euAll.length+' EU plants', 'b',
-      'Plants where latest e-Upkaran status = Functional Installed. From ALL '+euAll.length+' EU plants.',
-      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('In Complaint / NF Repairable', euNF, pct(euNF, euAll.length)+' of '+euAll.length+' EU plants', 'r',
-      'Plants where latest e-Upkaran status = In Complaint or Non Functional Repairable. From ALL '+euAll.length+' EU plants.',
-      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-eu-status'),
-    kc('Purity ≥ 93%', euGP.length, pct(euGP.length, euAll.length)+' of '+euAll.length+' EU plants', 'g',
-      'Plants with latest EU purity ≥ 93% (WHO standard). From ALL '+euAll.length+' EU plants.',
-      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-purity'),
-    kc('Purity = 0 (not running)', euNR.length, 'Excluded from averages · '+euAll.length+' EU plants', 'a',
-      'Plants where purity = 0 at time of drill — not running. From ALL '+euAll.length+' EU plants.',
-      euAll.length+' EU plants · EU drill date filter'+euDateLabel,'m-purity'),
-    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' plants with data', 'r',
+      euAll.length+' plants · '+euAllRecords+' records — no registry match required'),
+    kc('Functional', euFunc.length, pct(euFunc.length, euAll.length)+' of '+euAll.length+' plants', 'g',
+      'Plants where latest e-Upkaran status = Functional. From ALL '+euAll.length+' EU plants ('+euAllRecords+' records).',
+      euAll.length+' plants · '+euAllRecords+' records'+euDateLabel,'m-eu-status'),
+    kc('Functional Installed', euFI.length, pct(euFI.length, euAll.length)+' of '+euAll.length+' plants', 'b',
+      'Plants where latest e-Upkaran status = Functional Installed. From ALL '+euAll.length+' EU plants ('+euAllRecords+' records).',
+      euAll.length+' plants · '+euAllRecords+' records'+euDateLabel,'m-eu-status'),
+    kc('In Complaint / NF Repairable', euNF, pct(euNF, euAll.length)+' of '+euAll.length+' plants', 'r',
+      'Plants where latest e-Upkaran status = In Complaint or Non Functional Repairable. From ALL '+euAll.length+' EU plants ('+euAllRecords+' records).',
+      euAll.length+' plants · '+euAllRecords+' records'+euDateLabel,'m-eu-status'),
+    kc('Purity ≥ 93%', euGP.length, pct(euGP.length, euAll.length)+' of '+euAll.length+' plants', 'g',
+      'Plants with latest EU purity ≥ 93% (WHO standard). From ALL '+euAll.length+' EU plants ('+euAllRecords+' records).',
+      euAll.length+' plants · '+euAllRecords+' records'+euDateLabel,'m-purity'),
+    kc('Purity = 0 (not running)', euNR.length, 'Excluded from averages · '+euAllRecords+' records', 'a',
+      'Plants where purity = 0 at time of drill — not running. From ALL '+euAll.length+' EU plants ('+euAllRecords+' records).',
+      euAll.length+' plants · '+euAllRecords+' records'+euDateLabel,'m-purity'),
+    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' plants', 'r',
       'Plants with unresolved complaint. Uses all registry assets directly matched to EU drills and complaints — no ONA mapping required.',
-      matchedN2+' plants with EU/complaint data (direct join)','m-complaints'),
-    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN2+' plants with data', '',
+      matchedN2+' plants with data · '+COMPLAINTS_TOTAL+' total complaint records','m-complaints'),
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN2+' plants · '+COMPLAINTS_TOTAL+' records', '',
       'Mean raise→MOIC resolution days across all registry assets with complaint data.',
-      matchedN2+' plants with EU/complaint data (direct join)','m-resolution'),
+      matchedN2+' plants with data · '+COMPLAINTS_TOTAL+' total complaint records','m-resolution'),
   ].join('');
 
-  const euDrillPeriod = euFrom||euTo ? `${euAll.length} EU plants · EU drill: ${euFrom||'start'} → ${euTo||'today'}` : `${euAll.length} EU plants · EU drill: May 2025 – Apr 2026`;
-  const cPeriod2 = `${matchedN2} plants with EU/complaint data (direct join)`;
+  const euDrillPeriod = euFrom||euTo
+    ? `${euAll.length} plants · ${euAllRecords} records · EU drill: ${euFrom||'start'} → ${euTo||'today'}`
+    : `${euAll.length} plants · ${euAllRecords} records · EU drill: May 2025 – Apr 2026`;
+  const cPeriod2 = `${matchedN2} plants · ${COMPLAINTS_TOTAL} complaint records (direct join)`;
   setPeriod('p2tl-period',   euDrillPeriod);
   setPeriod('p2fc-period',   cPeriod2);
   setPeriod('p2pur-period',  euDrillPeriod);
-  setPeriod('p2disc-period', euDrillPeriod + ' · ' + matchedN2 + ' cross-referenced');
+  setPeriod('p2disc-period', euDrillPeriod + ' · ' + matchedN2 + ' cross-referenced · ' + COMPLAINTS_TOTAL + ' complaint records');
 
   // EU timeline uses ALL EU data via EU_MONTHLY_ALL
   eutlApplyAllEU(selDistStr2, euFrom, euTo);
@@ -3631,8 +3643,10 @@ function rp3(){
   ].join('');
 
   // Set period labels on all Page 3 charts
-  const stockPeriod = N+' registry assets · Stock on Hand (17 Apr 2026)';
-  const drillPeriod3 = drillFrom||drillTo ? `${verified.length} verified plants · EU drill: ${drillFrom||'start'} → ${drillTo||'today'}` : `${verified.length} verified plants · EU drill: last 90 days`;
+  const stockPeriod = N+' assets · '+COMPLAINTS_TOTAL+' complaint records · Stock on Hand (17 Apr 2026)';
+  const drillPeriod3 = drillFrom||drillTo
+    ? `${verified.length} verified plants · EU drill: ${drillFrom||'start'} → ${drillTo||'today'}`
+    : `${verified.length} verified plants · EU drill: last 90 days`;
   setPeriod('p3fun-period', `${stockPeriod} · Reporting: ${drillPeriod3}`);
   setPeriod('p3tbl-period', drillPeriod3);
 
@@ -4656,8 +4670,10 @@ var DISTRICTS_SORTED = [];
 var PLANTS_SORTED    = [];
 var DEPTS_SORTED     = [];
 // Per-page lists (data source specific to each page)
-var DISTRICTS_BY_PAGE = { '1':[], '2':[], '3':[] };
-var PLANTS_BY_PAGE    = { '1':[], '2':[], '3':[] };
+var DISTRICTS_BY_PAGE  = { '1':[], '2':[], '3':[] };
+var PLANTS_BY_PAGE     = { '1':[], '2':[], '3':[] };
+// Total raw record counts per dataset (set from meta after data loads)
+var COMPLAINTS_TOTAL   = 0;  // total complaint records in source dataset
 
 function msInitAll() {
   // Build sorted department list from loaded plants
