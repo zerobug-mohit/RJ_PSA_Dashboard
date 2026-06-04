@@ -260,7 +260,10 @@ function deriveDashboard() {
     const dhKey = dist + '|' + hosp;
     if (!byDH[dhKey]) byDH[dhKey] = [];
     byDH[dhKey].push(asset);
-    if (qr) byQR[qr] = asset;
+    if (qr) {
+      if (byQR[qr]) Logger.log('WARN Step A: duplicate QR suffix "' + qr + '" — ' + asset.dd + '/' + asset.sf + ' vs existing ' + byQR[qr].dd + '/' + byQR[qr].sf + ' (keeping first)');
+      else byQR[qr] = asset;
+    }
   });
   Logger.log('Registry: ' + regRows.length + ' rows | ' + Object.keys(byDHC).length + ' DHC keys | ' + Object.keys(byQR).length + ' QR keys');
 
@@ -294,19 +297,22 @@ function deriveDashboard() {
   const missesB   = [];
   var resolvedB = 0, totalB = 0;
 
-  // Resolve an asset from a bucket using manufacturer tiebreak
+  // Resolve an asset from a bucket using manufacturer tiebreak.
+  // Logs a warning when the tie cannot be broken deterministically.
   function resolveBucket_(bucket, sihMfr) {
     if (!bucket || !bucket.length) return null;
     if (bucket.length === 1) return bucket[0];
     if (sihMfr) {
       var exact = bucket.filter(function(a){ return a.supplier === sihMfr; });
-      if (exact.length) return exact[0];
+      if (exact.length === 1) return exact[0];
       var tok = sihMfr.split(' ')[0];
       if (tok) {
         var part = bucket.filter(function(a){ return a.supplier && a.supplier.indexOf(tok) !== -1; });
-        if (part.length) return part[0];
+        if (part.length === 1) return part[0];
       }
     }
+    // Ambiguous — log so data team can investigate and correct the mapping
+    Logger.log('WARN resolveBucket_: ' + bucket.length + ' assets share the same DHC key, picking first. Caps: ' + bucket.map(function(a){return a.cap;}).join(',') + ' Suppliers: ' + bucket.map(function(a){return a.supplier||'?';}).join(','));
     return bucket[0];
   }
 
@@ -542,9 +548,10 @@ function deriveDashboard() {
       if (matchFac) {
         const a = matchFac, b = d.facNorm;
         if (!a.includes(b) && !b.includes(a)) {
-          // Try first-word match as fallback
+          // First-word fallback — require ≥5 chars to avoid short-name false positives
+          // (e.g. "SMS", "Max", "BVM" are 3 chars and match too broadly)
           const fw = a.split(' ')[0];
-          if (fw.length >= 3 && !b.includes(fw)) return false;
+          if (fw.length >= 5 && !b.includes(fw)) return false;
         }
       }
 
@@ -710,10 +717,16 @@ function deriveDashboard() {
   var matchedE = 0, totalE = 0;
   const missesE = [];
 
-  // Build a reverse map: asset → code
+  // Build reverse map: QR suffix → code (for complaint linkage in Step E)
   const assetToCode = {};
   Object.keys(codeMap).forEach(function(code) {
-    assetToCode[codeMap[code].asset.eq] = code; // keyed on QR suffix
+    const qr = codeMap[code].asset.eq;
+    if (!qr) return;
+    if (assetToCode[qr] && assetToCode[qr] !== code) {
+      Logger.log('WARN Step E: QR "' + qr + '" claimed by both code ' + code + ' and code ' + assetToCode[qr] + ' — complaint will go to ' + assetToCode[qr]);
+    } else {
+      assetToCode[qr] = code;
+    }
   });
 
   allComps.forEach(function(c) {
