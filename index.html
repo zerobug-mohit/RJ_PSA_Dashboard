@@ -1794,7 +1794,6 @@ function rp4() {
   const withFB   = matched.filter(function(r){ return ['F1','F2','F3','F4'].indexOf(r.match_method) !== -1; });
 
   const regTotal = REGISTRY_ALL.length || EU_CROSS.length;
-  const regWithQR = REGISTRY_ALL.filter(function(r){ return r.has_qr === 'true' || r.has_qr === true; }).length;
   const euWithDrill = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0; }).length;
   const euWithComp  = EU_CROSS.filter(function(r){ return +r.complaint_count > 0; }).length;
   const euBoth      = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0 && +r.complaint_count > 0; }).length;
@@ -1807,23 +1806,19 @@ function rp4() {
     '<div class="dr-section-title">Summary — Data Coverage Across All Sources</div>',
     '<div class="dr-stat-grid">',
     drStat(regTotal, 'Registry (Stock-in-Hand)', 'Total PSA plant entries in registry', ''),
-    drStat(regWithQR, 'Registry with QR Code', 'Plants with scannable QR for complaint linkage', regTotal ? Math.round(regWithQR/regTotal*100)+'%' : ''),
     drStat(onaAllCt, 'ONA Plants (all)', 'Unique plant identities in ONA mock-drill data', ''),
     drStat(matched.length + '/' + all.length, 'ONA→Registry Matched', 'Mapping codes resolved to a registry asset', ''),
     drStat(clean.length, 'ONA — Verified-Clean Complaint Link', 'Unambiguous ONA↔Registry↔Complaint chain', ''),
     drStat(euAllCt, 'EU Plants (all)', 'Unique plant identities in e-Upkaran drill data', ''),
     drStat(euWithDrill, 'Registry with EU Drill', 'Registry assets matched to ≥1 EU drill', regTotal ? Math.round(euWithDrill/regTotal*100)+'%' : ''),
     drStat(COMPLAINTS_TOTAL, 'Total Complaint Records', 'All complaint records in source data', ''),
-    drStat(euWithComp, 'Registry with Complaints', 'Registry assets with ≥1 complaint (QR-matched)', regTotal ? Math.round(euWithComp/regTotal*100)+'%' : ''),
     '</div>',
     '</div>',
   ].join('');
 
   /* ── SECTION 1: ONA ↔ Registry ── */
   var s1MatchedRows = matched.map(function(r) {
-    var capMatch = r.ona_capacity && r.matched_capacity && r.ona_capacity !== r.matched_capacity
-      ? '<span style="color:#856404" title="ONA cap: '+r.ona_capacity+' vs Registry cap: '+r.matched_capacity+'">⚠ '+r.matched_capacity+'</span>'
-      : (r.matched_capacity||'—');
+    var capMatch = r.matched_capacity || '—';
     return '<tr><td>' + r.code + '</td><td>' + (r.ona_district||'—') + '</td>'
       + '<td style="max-width:180px">' + (r.ona_facility||'—') + '</td>'
       + '<td style="text-align:center">' + (r.ona_capacity||'—') + '</td>'
@@ -1926,7 +1921,6 @@ function rp4() {
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">',
     drStat(euAllCt, 'Total EU Plants (all)', 'Unique identities in e-Upkaran data', ''),
     drStat(euWithDrill, 'Registry Assets with EU Drill', 'Matched by District+Hospital+Capacity', regTotal ? Math.round(euWithDrill/regTotal*100)+'%' : ''),
-    drStat(euWithComp, 'Registry Assets with Complaints', 'QR-matched — fully accurate', regTotal ? Math.round(euWithComp/regTotal*100)+'%' : ''),
     drStat(euBoth, 'Both EU Drill + Complaint', 'Cross-source verified plants', ''),
     drStat(EU_CROSS.length - euWithDrill - euWithComp + euBoth, 'Registry Only — No Drill or Complaint', 'No field data recorded', ''),
     drStat(euDHCAmbig, 'EU Drill Precision — DHC Ambiguous', 'EU drills may be shared across twin plants at same hospital', ''),
@@ -1945,11 +1939,9 @@ function rp4() {
     '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
     'The registry is the authoritative source of all PSA plant identities in Rajasthan. All matching (ONA, EU, Complaints) resolves against this registry.',
     '</div>',
-    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">',
+    '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">',
     drStat(regTotal, 'Total Registry Plants', 'All PSA plant entries in Stock-in-Hand report', ''),
-    drStat(regWithQR, 'Plants with QR Code', 'Can be uniquely identified in complaints data', regTotal ? Math.round(regWithQR/regTotal*100)+'%' : ''),
     drStat(regVerified, 'Verified Inventory', 'Inventory status = Verified', regTotal ? Math.round(regVerified/regTotal*100)+'%' : ''),
-    drStat(regTotal - regWithQR, 'Plants Without QR', 'Cannot link to complaints data', ''),
     '</div>',
     '</div>',
   ].join('');
@@ -1972,9 +1964,7 @@ function exportDataReport() {
 
   /* Sheet 1: Summary */
   const regTotal = REGISTRY_ALL.length || EU_CROSS.length;
-  const regWithQR = REGISTRY_ALL.filter(function(r){ return r.has_qr === 'true' || r.has_qr === true; }).length;
   const euWithDrill = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0; }).length;
-  const euWithComp  = EU_CROSS.filter(function(r){ return +r.complaint_count > 0; }).length;
   const euBoth      = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0 && +r.complaint_count > 0; }).length;
   const allMR = MAPPING_REPORT;
   const matched  = allMR.filter(function(r){ return r.match_method !== 'MISS'; });
@@ -1991,7 +1981,6 @@ function exportDataReport() {
     [],
     ['METRIC', 'VALUE', 'NOTES'],
     ['Total Registry Plants', regTotal, 'All PSA plant entries in Stock-in-Hand report'],
-    ['Registry Plants with QR Code', regWithQR, 'Can be uniquely identified in complaints'],
     ['Total ONA Plants (all drills)', ONA_ALL_PLANTS.length, 'Unique plant identities in ONA mock-drill data'],
     ['ONA→Registry Matched', matched.length + '/' + allMR.length, 'Mapping codes resolved to a registry asset'],
     ['ONA Not Matched', misses.length, 'No registry entry found for SIH mapping entry'],
@@ -2001,7 +1990,6 @@ function exportDataReport() {
     ['Clean Plants WITHOUT Complaints', cleanNoComp.length, 'Legitimately zero complaints on record'],
     ['Total EU Plants (all drills)', EU_ALL_PLANTS.length, 'Unique plant identities in e-Upkaran data'],
     ['Registry with EU Drill Data', euWithDrill, 'Matched by District+Hospital+Capacity'],
-    ['Registry with Complaints (QR)', euWithComp, 'QR-matched — fully accurate'],
     ['Registry with BOTH EU + Complaint', euBoth, 'Cross-source verified plants'],
     ['Total Complaint Records', COMPLAINTS_TOTAL, 'All complaint records in source data'],
   ];
