@@ -301,7 +301,7 @@ function deriveDashboard() {
   // Complaint data for these codes is excluded from outputs — linkage cannot be verified.
   // Recalculates automatically on every derive as registry/mapping data changes.
   const ambiguousCodes = new Set();
-  const ambiguityReasons = {}; // code → 'DHC_MULTI' | 'QR_CONFLICT' | 'DHC_MULTI+QR_CONFLICT'
+  const ambiguityReasons = {}; // code → 'DHC_MULTI' | 'DHC_COLLISION' | 'DHC_MULTI+DHC_COLLISION'
   const codeMatchMethod  = {}; // code → 'QR' | 'DHC' | 'F1' | 'F2' | 'F3' | 'F4' | 'MISS'
   const codeRawInfo      = {}; // code → {onaFac, onaDist, sihFac, sihDist, sihCap}
 
@@ -756,11 +756,11 @@ function deriveDashboard() {
   const compParsed = allComps.map(function(c) {
     return {
       raw:  c,
-      dist: normDist(c['District Name']                   || c['_col1'] || ''),
-      hosp: normName(c['Hospital Name']                   || c['_col2'] || ''),
-      cap:  parseCap(c['Capacity of PSA Plant (in LPM)']  || c['_col3'] || ''),
-      qr:   qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || '')),
-      mfr:  normMfr(c['Manufacturer'] || c['Supplier'] || c['Service Provider'] || c['_col5'] || ''),
+      dist: normDist(c['District Name']                    || ''),   // col0 — confirmed
+      hosp: normName(c['Hospital Name']                    || ''),   // col2 — confirmed
+      cap:  null,  // complaints data has no capacity column; DH fallback handles matching
+      qr:   qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || '')),  // col4 — confirmed
+      mfr:  normMfr(c['Supplier Name'] || c['Service Provider Name'] || ''),  // col14/col16 — confirmed from headers
     };
   });
   Logger.log('Complaints pre-parsed: ' + compParsed.filter(function(c){ return !!c.dist; }).length + ' rows with district');
