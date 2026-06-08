@@ -43,10 +43,11 @@ select:focus{outline:none;border-color:#aaa}
 .krow{display:grid;gap:10px;margin-bottom:18px}
 .krow-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .krow-4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.krow-5{grid-template-columns:repeat(5,minmax(0,1fr))}
 .krow-6{grid-template-columns:repeat(6,minmax(0,1fr))}
 .krow-8{grid-template-columns:repeat(8,minmax(0,1fr))}
-@media(max-width:1100px){.krow-8,.krow-6{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:700px){.krow-2,.krow-4,.krow-6,.krow-8{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){.krow-8,.krow-6,.krow-5{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:700px){.krow-2,.krow-4,.krow-5,.krow-6,.krow-8{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Complaints page inner sub-tabs */
 .ctab{font-size:13px;font-weight:600;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 16px;cursor:pointer;transition:all .12s}
 .ctab:hover{color:var(--text);border-color:var(--muted)}
@@ -647,7 +648,7 @@ input[type=date]:focus{outline:none;border-color:#aaa}
     </div>
   </div>
 </div> <!-- PAGE 1 -->
-<div class="page" id="pg0"> <div class="filterbar"> <span class="fl">District</span> <div class="ms-wrapper" id="ms1d-wrap"> <div class="ms-trigger" id="ms1d-trigger" onclick="msToggle('ms1d')"> <span id="ms1d-label">All districts</span> <span class="ms-count" id="ms1d-count" style="display:none">0</span> <span class="ms-arrow">▾</span> </div> <div class="ms-panel" id="ms1d-panel"> <div class="ms-search-wrap"><input class="ms-search" id="ms1d-search" placeholder="Search district…" oninput="msFilter('ms1d')" onclick="event.stopPropagation()"></div> <div class="ms-list" id="ms1d-list"></div> <div class="ms-footer"><span class="ms-footer-count" id="ms1d-footer"></span><button class="ms-clear-btn" onclick="msClear('ms1d')">Clear all</button></div> </div> </div> <div class="filter-sep"></div> <span class="fl">Plant</span> <div class="ms-wrapper" id="ms1p-wrap"> <div class="ms-trigger" id="ms1p-trigger" onclick="msToggle('ms1p')"> <span id="ms1p-label">All plants</span> <span class="ms-count" id="ms1p-count" style="display:none">0</span> <span class="ms-arrow">▾</span> </div> <div class="ms-panel" id="ms1p-panel"> <div class="ms-search-wrap"><input class="ms-search" id="ms1p-search" placeholder="Search by # code or facility…" oninput="msFilter('ms1p')" onclick="event.stopPropagation()"></div> <div class="ms-list" id="ms1p-list"></div> <div class="ms-footer"><span class="ms-footer-count" id="ms1p-footer"></span><button class="ms-clear-btn" onclick="msClear('ms1p')">Clear all</button></div> </div> </div> <div class="filter-sep"></div> <span class="fl">From date</span> <input type="date" id="f1from" min="2024-08-29" max="2026-04-17" onchange="rp1()" title="Drill timeline from date"> <span class="date-sep">to</span> <input type="date" id="f1to" min="2024-08-29" max="2026-04-17" onchange="rp1()" title="Drill timeline to date"> <button class="date-clear" onclick="clearAllFilters('pg0')"> Clear all</button> </div> <div class="active-filter-bar" id="afb1"></div> <div class="krow krow-4" id="k1"></div> <div class="card" style="margin-bottom:14px"> <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This chart shows, for each month from August 2024 to April 2026, how many PSA plants submitted an ONA mock-drill and whether they were <span class="sg-flag-g">Functional</span> or <span class="sg-flag-r">Not-Functional</span> at the time of that submission.</p> <ul> <li><strong>Green bar segments</strong> = plants that reported Functional that month. Taller green = more plants working well.</li> <li><strong>Red bar segments</strong> = plants that reported Not-Functional. Taller red = more plants broken.</li> <li><strong>Dots above bars</strong> = average oxygen purity (%) for functional plants that month. Higher dots = better purity. The WHO safe threshold is 93% — a dashed line marks this.</li> </ul> <p><strong>How to drill down:</strong> <span class="sg-action">Click any monthly bar</span> to see individual plant-level results for that month. Each dot represents one plant. Hover over a dot to see facility name, purity, and status. Click <span class="sg-action">← All months</span> to return to the overview.</p> <div class="sg-tip"><strong>What to look for:</strong> If red bars are growing over time, more plants are breaking down. A sudden drop in purity dots means quality problems across your district. Use the District filter above to focus on one area.</div> </div> </details> <div class="card-title" id="tl-title">Functionality status over time — ONA mock-drills per plant</div> <div class="card-period" id="p1a-period"></div> <div id="tl-breadcrumb" style="display:none;margin-bottom:8px;font-size:11px;color:var(--muted)"> <button onclick="tlReset()" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:11px;padding:0;text-decoration:underline">← All months</button> <span id="tl-bc-text"></span> </div> <div id="tl-container" style="width:100%;overflow-x:auto;isolation:isolate"></div> <div id="tl-legend" class="leg" style="margin-top:8px"> <span><span class="ld" style="background:#1D9E75"></span>Functional</span> <span><span class="ld" style="background:#E24B4A"></span>Not-Functional</span> <span style="color:var(--muted);font-size:10px;margin-left:6px">Click a bar to drill into individual plants · Hover dots for detail · District filter applies</span> </div> <details class="ai-insight-panel" id="ai-tl"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — ONA functionality trend</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-tl', window._aiFns['ai-tl'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div> <div class="card" style="margin-bottom:14px"> <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px"> <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This shows the average oxygen purity (%) of functional plants over time, based on ONA mock-drill readings. Each plant contributes up to 3 readings per drill; the average of those is shown.</p> <ul> <li><strong>The line</strong> = monthly average purity across all functional plants in your filter.</li> <li><strong>Red shaded band below 90%</strong> = danger zone — purity too low for safe medical use.</li> <li><strong>Dashed line at 93%</strong> = WHO minimum standard for medical-grade oxygen. Plants below this need attention.</li> <li><strong>Dots on the line</strong> = click to drill into individual plant readings for that month.</li> </ul> <p><strong>How to drill down:</strong> <span class="sg-action">Click any dot</span> on the line to see a scatter view of individual plants for that month — each dot is one plant. Hover for facility name and purity value. Click <span class="sg-action">← Overview</span> to return.</p> <div class="sg-tip"><strong>What to act on:</strong> If the line dips below 93%, identify which plants are pulling the average down using the drill-down. Plants recording 0% purity are excluded — these appear as "Purity = 0" in the KPI tiles above.</div> </div> </details> <div class="card-title" id="pur-title" style="margin-bottom:0">Purity distribution — functional plants (ONA)</div> <div id="pur-breadcrumb" style="display:none;font-size:11px;color:var(--muted)"> <button onclick="purReset()" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:11px;padding:0;text-decoration:underline">← Overview</button> <span id="pur-bc-text"></span> </div> </div> <div class="card-period" id="p1f-period"></div> <div id="pur-container" style="width:100%;overflow-x:auto"></div> <details class="ai-insight-panel" id="ai-pur"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — ONA purity distribution</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-pur', window._aiFns['ai-pur'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div> <div class="card"> <details class="sec-guide"> <summary>How to use this visualisation</summary> <div class="sec-guide-body"> <p>This panel surfaces ONA mock-drill dimensions not shown in the charts above — funding scheme performance, the reasons behind non-functional status, and how recently each plant submitted a drill.</p> <ul> <li><strong>By Funding Scheme:</strong> Each card shows functional %, average purity, and complaint count for plants under that scheme. The coloured bar is the functional rate. Click a card to see all plants in that scheme.</li> <li><strong>Non-Functional Reason Breakdown:</strong> Non-Functional plants are categorised by their reported reason (Electrical, Mechanical, Gas/Purity, Maintenance, Infrastructure, Other). Click a bar to see all Non-Functional plants with that reason type.</li> <li><strong>ONA Drill Recency:</strong> Shows how recently each plant last submitted a drill — bucketed into ≤30 d, 31–90 d, 91–180 d, &gt;180 d, and Never. Click a bucket to see which plants fall there.</li> </ul> <p>Clicking any row in a drill-down opens the full purity trend chart for that plant. Filters above narrow all three panels simultaneously.</p> <div class="sg-tip"><strong>Tip:</strong> Start with the Recency panel — plants in the “Never” or “&gt;180 days” bucket have effectively stopped reporting and need follow-up regardless of their current ONA status.</div> </div> </details> <div class="card-title" id="ona-intel-title">ONA Plant Intelligence — scheme performance, Non-Functional reasons &amp; drill recency</div> <div class="card-period" id="p1disc-period"></div> <div id="ona-intel-content" style="margin-top:6px"></div> <details class="ai-insight-panel" id="ai-disc1"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — ONA scheme performance, Non-Functional reasons &amp; drill recency</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-disc1', window._aiFns['ai-disc1'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div>
+<div class="page" id="pg0"> <div class="filterbar"> <span class="fl">District</span> <div class="ms-wrapper" id="ms1d-wrap"> <div class="ms-trigger" id="ms1d-trigger" onclick="msToggle('ms1d')"> <span id="ms1d-label">All districts</span> <span class="ms-count" id="ms1d-count" style="display:none">0</span> <span class="ms-arrow">▾</span> </div> <div class="ms-panel" id="ms1d-panel"> <div class="ms-search-wrap"><input class="ms-search" id="ms1d-search" placeholder="Search district…" oninput="msFilter('ms1d')" onclick="event.stopPropagation()"></div> <div class="ms-list" id="ms1d-list"></div> <div class="ms-footer"><span class="ms-footer-count" id="ms1d-footer"></span><button class="ms-clear-btn" onclick="msClear('ms1d')">Clear all</button></div> </div> </div> <div class="filter-sep"></div> <span class="fl">Plant</span> <div class="ms-wrapper" id="ms1p-wrap"> <div class="ms-trigger" id="ms1p-trigger" onclick="msToggle('ms1p')"> <span id="ms1p-label">All plants</span> <span class="ms-count" id="ms1p-count" style="display:none">0</span> <span class="ms-arrow">▾</span> </div> <div class="ms-panel" id="ms1p-panel"> <div class="ms-search-wrap"><input class="ms-search" id="ms1p-search" placeholder="Search by # code or facility…" oninput="msFilter('ms1p')" onclick="event.stopPropagation()"></div> <div class="ms-list" id="ms1p-list"></div> <div class="ms-footer"><span class="ms-footer-count" id="ms1p-footer"></span><button class="ms-clear-btn" onclick="msClear('ms1p')">Clear all</button></div> </div> </div> <div class="filter-sep"></div> <span class="fl">From date</span> <input type="date" id="f1from" min="2024-08-29" max="2026-04-17" onchange="rp1()" title="Drill timeline from date"> <span class="date-sep">to</span> <input type="date" id="f1to" min="2024-08-29" max="2026-04-17" onchange="rp1()" title="Drill timeline to date"> <button class="date-clear" onclick="clearAllFilters('pg0')"> Clear all</button> </div> <div class="active-filter-bar" id="afb1"></div> <div class="krow krow-5" id="k1"></div> <div class="card" style="margin-bottom:14px"> <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This chart shows, for each month from August 2024 to April 2026, how many PSA plants submitted an ONA mock-drill and whether they were <span class="sg-flag-g">Functional</span> or <span class="sg-flag-r">Not-Functional</span> at the time of that submission.</p> <ul> <li><strong>Green bar segments</strong> = plants that reported Functional that month. Taller green = more plants working well.</li> <li><strong>Red bar segments</strong> = plants that reported Not-Functional. Taller red = more plants broken.</li> <li><strong>Dots above bars</strong> = average oxygen purity (%) for functional plants that month. Higher dots = better purity. The WHO safe threshold is 93% — a dashed line marks this.</li> </ul> <p><strong>How to drill down:</strong> <span class="sg-action">Click any monthly bar</span> to see individual plant-level results for that month. Each dot represents one plant. Hover over a dot to see facility name, purity, and status. Click <span class="sg-action">← All months</span> to return to the overview.</p> <div class="sg-tip"><strong>What to look for:</strong> If red bars are growing over time, more plants are breaking down. A sudden drop in purity dots means quality problems across your district. Use the District filter above to focus on one area.</div> </div> </details> <div class="card-title" id="tl-title">Functionality status over time — ONA mock-drills per plant</div> <div class="card-period" id="p1a-period"></div> <div id="tl-breadcrumb" style="display:none;margin-bottom:8px;font-size:11px;color:var(--muted)"> <button onclick="tlReset()" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:11px;padding:0;text-decoration:underline">← All months</button> <span id="tl-bc-text"></span> </div> <div id="tl-container" style="width:100%;overflow-x:auto;isolation:isolate"></div> <div id="tl-legend" class="leg" style="margin-top:8px"> <span><span class="ld" style="background:#1D9E75"></span>Functional</span> <span><span class="ld" style="background:#E24B4A"></span>Not-Functional</span> <span style="color:var(--muted);font-size:10px;margin-left:6px">Click a bar to drill into individual plants · Hover dots for detail · District filter applies</span> </div> <details class="ai-insight-panel" id="ai-tl"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — ONA functionality trend</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-tl', window._aiFns['ai-tl'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div> <div class="card" style="margin-bottom:14px"> <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px"> <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This shows the average oxygen purity (%) of functional plants over time, based on ONA mock-drill readings. Each plant contributes up to 3 readings per drill; the average of those is shown.</p> <ul> <li><strong>The line</strong> = monthly average purity across all functional plants in your filter.</li> <li><strong>Red shaded band below 90%</strong> = danger zone — purity too low for safe medical use.</li> <li><strong>Dashed line at 93%</strong> = WHO minimum standard for medical-grade oxygen. Plants below this need attention.</li> <li><strong>Dots on the line</strong> = click to drill into individual plant readings for that month.</li> </ul> <p><strong>How to drill down:</strong> <span class="sg-action">Click any dot</span> on the line to see a scatter view of individual plants for that month — each dot is one plant. Hover for facility name and purity value. Click <span class="sg-action">← Overview</span> to return.</p> <div class="sg-tip"><strong>What to act on:</strong> If the line dips below 93%, identify which plants are pulling the average down using the drill-down. Plants recording 0% purity are excluded — these appear as "Purity = 0" in the KPI tiles above.</div> </div> </details> <div class="card-title" id="pur-title" style="margin-bottom:0">Purity distribution — functional plants (ONA)</div> <div id="pur-breadcrumb" style="display:none;font-size:11px;color:var(--muted)"> <button onclick="purReset()" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:11px;padding:0;text-decoration:underline">← Overview</button> <span id="pur-bc-text"></span> </div> </div> <div class="card-period" id="p1f-period"></div> <div id="pur-container" style="width:100%;overflow-x:auto"></div> <details class="ai-insight-panel" id="ai-pur"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — ONA purity distribution</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-pur', window._aiFns['ai-pur'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div> <div class="card"> <details class="sec-guide"> <summary>How to use this visualisation</summary> <div class="sec-guide-body"> <p>This panel surfaces ONA mock-drill dimensions not shown in the charts above — funding scheme performance, the reasons behind non-functional status, and how recently each plant submitted a drill.</p> <ul> <li><strong>By Funding Scheme:</strong> Each card shows functional %, average purity, and complaint count for plants under that scheme. The coloured bar is the functional rate. Click a card to see all plants in that scheme.</li> <li><strong>Non-Functional Reason Breakdown:</strong> Non-Functional plants are categorised by their reported reason (Electrical, Mechanical, Gas/Purity, Maintenance, Infrastructure, Other). Click a bar to see all Non-Functional plants with that reason type.</li> <li><strong>ONA Drill Recency:</strong> Shows how recently each plant last submitted a drill — bucketed into ≤30 d, 31–90 d, 91–180 d, &gt;180 d, and Never. Click a bucket to see which plants fall there.</li> </ul> <p>Clicking any row in a drill-down opens the full purity trend chart for that plant. Filters above narrow all three panels simultaneously.</p> <div class="sg-tip"><strong>Tip:</strong> Start with the Recency panel — plants in the “Never” or “&gt;180 days” bucket have effectively stopped reporting and need follow-up regardless of their current ONA status.</div> </div> </details> <div class="card-title" id="ona-intel-title">ONA Plant Intelligence — scheme performance, Non-Functional reasons &amp; drill recency</div> <div class="card-period" id="p1disc-period"></div> <div id="ona-intel-content" style="margin-top:6px"></div> <details class="ai-insight-panel" id="ai-disc1"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — ONA scheme performance, Non-Functional reasons &amp; drill recency</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-disc1', window._aiFns['ai-disc1'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div>
 </div> <!-- PAGE 2 -->
 <div class="page" id="pg1"> <div class="filterbar"> <span class="fl">District</span> <div class="ms-wrapper" id="ms2d-wrap"> <div class="ms-trigger" id="ms2d-trigger" onclick="msToggle('ms2d')"> <span id="ms2d-label">All districts</span> <span class="ms-count" id="ms2d-count" style="display:none">0</span> <span class="ms-arrow">▾</span> </div> <div class="ms-panel" id="ms2d-panel"> <div class="ms-search-wrap"><input class="ms-search" id="ms2d-search" placeholder="Search district…" oninput="msFilter('ms2d')" onclick="event.stopPropagation()"></div> <div class="ms-list" id="ms2d-list"></div> <div class="ms-footer"><span class="ms-footer-count" id="ms2d-footer"></span><button class="ms-clear-btn" onclick="msClear('ms2d')">Clear all</button></div> </div> </div> <div class="filter-sep"></div> <span class="fl">Plant</span> <div class="ms-wrapper" id="ms2p-wrap"> <div class="ms-trigger" id="ms2p-trigger" onclick="msToggle('ms2p')"> <span id="ms2p-label">All plants</span> <span class="ms-count" id="ms2p-count" style="display:none">0</span> <span class="ms-arrow">▾</span> </div> <div class="ms-panel" id="ms2p-panel"> <div class="ms-search-wrap"><input class="ms-search" id="ms2p-search" placeholder="Search by # code or facility…" oninput="msFilter('ms2p')" onclick="event.stopPropagation()"></div> <div class="ms-list" id="ms2p-list"></div> <div class="ms-footer"><span class="ms-footer-count" id="ms2p-footer"></span><button class="ms-clear-btn" onclick="msClear('ms2p')">Clear all</button></div> </div> </div> <div class="filter-sep"></div> <span class="fl">From date</span> <input type="date" id="f2from" min="2025-05-15" max="2026-04-11" onchange="rp2()" title="EU drill from date"> <span class="date-sep">to</span> <input type="date" id="f2to" min="2025-05-15" max="2026-04-11" onchange="rp2()" title="EU drill to date"> <button class="date-clear" onclick="clearAllFilters('pg1')"> Clear all</button> </div> <div class="active-filter-bar" id="afb2"></div> <div class="krow krow-6" id="k2"></div> <div class="card" style="margin-bottom:14px"> <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This chart is the e-Upkaran equivalent of the ONA timeline on Page 1. It shows, per month, how many plants submitted an e-Upkaran drill and what equipment status they recorded.</p> <ul> <li><span class="sg-flag-g">Green</span> = Functional or Functional Installed (plant is working or physically installed).</li> <li><span class="sg-flag-r">Red</span> = In Complaint or Non-Functional Repairable (plant has a known fault).</li> <li><strong>Dots</strong> = average purity from e-Upkaran readings that month. Same 93% threshold applies.</li> </ul> <p><strong>How to drill down:</strong> <span class="sg-action">Click any monthly bar</span> to see individual plant records for that month. Each plant shows its facility name, purity, and equipment status. Click <span class="sg-action">← All months</span> to go back.</p> <div class="sg-tip">Use the <strong>From/To date</strong> filter above to restrict which e-Upkaran drills are included. This controls the population of plants shown in the chart. ONA and e-Upkaran data are separate systems — a plant can look healthy in one and broken in the other (see the Discrepancy table below).</div> </div> </details> <div class="card-title" id="eutl-title">Equipment status over time — e-Upkaran drills per plant</div> <div class="card-period" id="p2tl-period"></div> <div id="eutl-breadcrumb" style="display:none;margin-bottom:8px;font-size:11px;color:var(--muted)"> <button onclick="eutlReset()" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:11px;padding:0;text-decoration:underline">← All months</button> <span id="eutl-bc-text"></span> </div> <div id="eutl-container" style="width:100%;overflow-x:auto;isolation:isolate"></div> <div id="eutl-legend" class="leg" style="margin-top:8px"> <span><span class="ld" style="background:#1D9E75"></span>Functional / Functional Installed</span> <span><span class="ld" style="background:#E24B4A"></span>Non-Functional (In Complaint / NF Repairable)</span> <span style="color:var(--muted);font-size:10px;margin-left:6px">Click a bar to drill into individual plants · Hover dots for detail · District filter applies</span> </div> <details class="ai-insight-panel" id="ai-eutl"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — e-Upkaran equipment trend</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-eutl', window._aiFns['ai-eutl'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div> <div class="card" style="margin-bottom:14px"> <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px"> <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This is the purity trend for e-Upkaran drills — the same concept as the ONA purity chart on Page 1, but using purity readings recorded directly via the e-Upkaran scanning system rather than ONA forms.</p> <ul> <li><strong>The line</strong> = monthly average purity (%) across all plants in your current filter with valid e-Upkaran readings.</li> <li><strong>Dashed line at 93%</strong> = WHO standard. Points below this need attention.</li> <li><strong>Dashed line at 90%</strong> = secondary alert threshold.</li> </ul> <p><strong>How to drill down:</strong> <span class="sg-action">Click any dot on the line</span> to see individual plant purity values for that month. Each dot is one plant — hover for the facility name. Click <span class="sg-action">← Overview</span> to return.</p> <div class="sg-tip">Comparing this chart with the ONA purity chart (Page 1) can reveal inconsistencies — if ONA shows high purity but e-Upkaran shows low, the field reporting may need validation.</div> </div> </details> <div class="card-title" id="pur2-title" style="margin-bottom:0">Purity trend — e-Upkaran drills</div> <div id="pur2-breadcrumb" style="display:none;font-size:11px;color:var(--muted)"> <button onclick="pur2Reset()" style="background:none;border:none;cursor:pointer;color:var(--blue);font-size:11px;padding:0;text-decoration:underline">← Overview</button> <span id="pur2-bc-text"></span> </div> </div> <div class="card-period" id="p2pur-period"></div> <div id="pur2-container" style="width:100%;overflow-x:auto"></div> <details class="ai-insight-panel" id="ai-pur2"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — e-Upkaran purity trend</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-pur2', window._aiFns['ai-pur2'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div> <div class="card"> <details class="sec-guide"> <summary>How to use this visualisation</summary> <div class="sec-guide-body"> <p>This panel surfaces e-Upkaran mock-drill dimensions not shown in the charts above — safety observations recorded during the drill, equipment running hours, and how recently each plant submitted an e-Upkaran drill.</p> <ul> <li><strong>Safety Observations:</strong> Flags plants where the drill recorded a leakage, non-compliant fire safety, or the plant was not running at time of drill. These are direct field findings from the e-Upkaran scan. Click any flag to see the affected plants.</li> <li><strong>Running Hours Distribution:</strong> Groups plants by total running hours recorded in the latest drill — Not Running (0 hrs), Low (1–100 hrs), Medium (101–500 hrs), High (&gt;500 hrs). Includes average purity per bucket. Click to drill down.</li> <li><strong>EU Drill Recency:</strong> Shows how recently each plant last submitted an e-Upkaran drill — bucketed into ≤30 d, 31–90 d, 91–180 d, &gt;180 d, and Never. Click a bucket to see which plants fall there.</li> </ul> <p>Clicking any plant row in a drill-down opens the full EU purity trend chart for that plant. Filters above narrow all three panels simultaneously.</p> <div class="sg-tip"><strong>Tip:</strong> Start with Safety Observations — leakage and fire safety issues are direct field hazards that need immediate follow-up regardless of equipment status.</div> </div> </details> <div class="card-title" id="eu-intel-title">EU Mock-Drill Intelligence — safety observations, running hours &amp; drill recency</div> <div class="card-period" id="p2disc-period"></div> <div id="eu-intel-content" style="margin-top:6px"></div> <details class="ai-insight-panel" id="ai-disc2"><summary class="ai-insight-header"><div class="ai-insight-label"><span class="ai-badge">AI</span>Key insights — EU safety observations, running hours &amp; drill recency</div><button class="ai-analyse-btn" onclick="event.preventDefault();event.stopPropagation();runAIInsight('ai-disc2', window._aiFns['ai-disc2'])">Analyse</button></summary><div class="ai-insight-body"></div></details></div>
 </div> <!-- PAGE 3 -->
@@ -1123,6 +1124,7 @@ async function loadDashboard() {
       return {
         m:    r.month    || '',
         dist: r.district || '',
+        fac:  r.facility || '',   // normalized hospital (per-plant aggregation)
         tot:  +r.total   || 0,
         f:    +r.functional     || 0,
         n:    +r.not_functional || 0,
@@ -1226,6 +1228,7 @@ async function loadDashboard() {
       return {
         m:    r.month    || '',
         dist: r.district || '',
+        fac:  r.facility || '',   // normalized ONA facility (per-plant aggregation)
         tot:  +r.total   || 0,
         f:    +r.functional     || 0,
         n:    +r.not_functional || 0,
@@ -1234,11 +1237,13 @@ async function loadDashboard() {
     });
 
     /* --- Per-page district + plant lists (data-driven, one list per page) --- */
-    // Page 1 (ONA): districts and plants from ONA_ALL_PLANTS
+    // Page 1 (ONA): districts and plants from ONA_ALL_PLANTS.
+    // Plant filter keyed by district|facility (dd|sf) — same identity space as the
+    // per-plant monthly data — so it can drive KPIs, intelligence AND trend charts.
     DISTRICTS_BY_PAGE['1'] = [...new Set(ONA_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
-    PLANTS_BY_PAGE['1'] = RAW.slim_plants
-      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:a.c-b.c; })
-      .map(function(p){ return { val:String(p.c), label:(p.sf||p.of||'').slice(0,38), dist:p.dd, cap:p.cs, code:'#'+p.c }; });
+    PLANTS_BY_PAGE['1'] = ONA_ALL_PLANTS
+      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:(a.sf<b.sf?-1:1); })
+      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; });
 
     // Page 2 (EU): districts and plants from EU_ALL_PLANTS
     DISTRICTS_BY_PAGE['2'] = [...new Set(EU_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
@@ -1256,19 +1261,49 @@ async function loadDashboard() {
     DISTRICTS_SORTED = [...new Set([...DISTRICTS_BY_PAGE['1'],...DISTRICTS_BY_PAGE['2'],...DISTRICTS_BY_PAGE['3']])].sort();
     PLANTS_SORTED    = RAW.slim_plants.slice().sort(function(a,b){ return a.c-b.c; });
 
-    /* --- Dynamic date range for filter inputs (computed from live data) --- */
+    /* --- Dynamic date ranges (computed from live data) ---
+       IMPORTANT: a dataset's span is taken from its MONTHLY aggregate, which
+       covers EVERY drill — not from *_ALL_PLANTS.od/.ed (those hold only each
+       plant's LATEST drill, so their minimum starts later than the true first
+       drill and would disagree with the timeline charts). The same span drives
+       both the period labels and the date-input min/max so they always agree. */
     function setDateRange_(fromId, toId, minD, maxD) {
       var fe=document.getElementById(fromId), te=document.getElementById(toId);
       if(fe){ fe.min=minD; fe.max=maxD; } if(te){ te.min=minD; te.max=maxD; }
     }
-    // Page 1: complaint dates (rd field on matched plants)
+    function monLabel_(ym){ return new Date(ym+'-01T00:00:00').toLocaleDateString('en-IN',{month:'short',year:'numeric'}); }
+    function lastDay_(ym){ var y=+ym.slice(0,4), m=+ym.slice(5,7); return ym+'-'+String(new Date(y,m,0).getDate()).padStart(2,'0'); }
+    // Span of a monthly-aggregate array → { min:'YYYY-MM-01', max:'YYYY-MM-DD', label:'Mon YYYY – Mon YYYY' }
+    function monthlySpan_(rows){
+      var ms = (rows||[]).map(function(r){ return r.m; }).filter(Boolean).sort();
+      if(!ms.length) return null;
+      var a=ms[0], b=ms[ms.length-1];
+      return { min:a+'-01', max:lastDay_(b), label:(a===b ? monLabel_(a) : monLabel_(a)+' – '+monLabel_(b)) };
+    }
+    function rangeLabel_(sorted){
+      if(!sorted || !sorted.length) return '';
+      function mon(d){ return new Date(d+'T00:00:00').toLocaleDateString('en-IN',{month:'short',year:'numeric'}); }
+      var a=mon(sorted[0]), b=mon(sorted[sorted.length-1]);
+      return a===b ? a : (a+' – '+b);
+    }
+
+    var _onaSpan = monthlySpan_(ONA_MONTHLY_ALL);   // ONA drill span (all drills)
+    var _euSpan  = monthlySpan_(EU_MONTHLY_ALL);    // EU drill span (all drills)
     var _compDates=[];
     RAW.slim_plants.forEach(function(p){ (p.cl||[]).forEach(function(c){ if(c.rd) _compDates.push(c.rd); }); });
     _compDates.sort();
-    if(_compDates.length) setDateRange_('f1from','f1to',_compDates[0],_compDates[_compDates.length-1]);
-    // Page 2 & 3: EU drill dates
-    var _euDates=EU_ALL_PLANTS.map(function(p){return p.ed;}).filter(Boolean).sort();
-    if(_euDates.length){ setDateRange_('f2from','f2to',_euDates[0],_euDates[_euDates.length-1]); setDateRange_('f3from','f3to',_euDates[0],_euDates[_euDates.length-1]); }
+
+    // ONA Mockdrill page (page 1) — ONA drill dates
+    if(_onaSpan) setDateRange_('f1from','f1to', _onaSpan.min, _onaSpan.max);
+    // EU Mockdrill (page 2) + QR Coverage (page 3) — EU drill dates
+    if(_euSpan){ setDateRange_('f2from','f2to', _euSpan.min, _euSpan.max); setDateRange_('f3from','f3to', _euSpan.min, _euSpan.max); }
+    // Complaints Status page: ONA sub-tab = complaint raise dates, EU sub-tab = EU drill dates
+    if(_compDates.length) setDateRange_('fc1from','fc1to', _compDates[0], _compDates[_compDates.length-1]);
+    if(_euSpan)           setDateRange_('fc2from','fc2to', _euSpan.min, _euSpan.max);
+
+    window.ONA_RANGE  = _onaSpan ? _onaSpan.label : '';
+    window.EU_RANGE   = _euSpan  ? _euSpan.label  : '';
+    window.COMP_RANGE = rangeLabel_(_compDates);
 
     /* --- Dataset totals (for "N records · M plants" labels) --- */
     const metaObj = metaToObject(metaVals);
@@ -1381,8 +1416,8 @@ function injectDataDates() {
   var sep = '<span style="color:var(--border);padding:0 8px">&middot;</span>';
 
   var configs = [
-    { id: 'afb1', html: badge('Latest ONA drill', maxONA)  + sep + badge('Latest complaint',         maxComp) },
-    { id: 'afb2', html: badge('Latest EU drill',  maxEU)   + sep + badge('Latest complaint',         maxComp) },
+    { id: 'afb1', html: badge('Latest ONA drill', maxONA) },
+    { id: 'afb2', html: badge('Latest EU drill',  maxEU) },
     { id: 'afb3', html: badge('Latest EU drill',  maxEU)   + sep + badge('Latest MOIC verification', maxMOIC) },
   ];
 
@@ -1435,9 +1470,10 @@ function makeFilterBar_(pgIdx) {
   if (distSel.length)  parts.push('<strong>District:</strong> ' + distSel.join(', '));
   if (deptSel.length)  parts.push('<strong>Department:</strong> ' + deptSel.join(', '));
   if (plantSel.length) {
-    var labels = plantSel.map(function(code) {
-      var p = (RAW.slim_plants || []).find(function(pl) { return String(pl.c) === code; });
-      return p ? '#' + p.c + ' ' + (p.sf || p.of || '').slice(0, 28) : '#' + code;
+    var labels = plantSel.map(function(key) {
+      var p = (RAW.slim_plants || []).find(function(pl) { return String(pl.c) === key; });
+      if (p) return '#' + p.c + ' ' + (p.sf || p.of || '').slice(0, 28);
+      return key.indexOf('|') !== -1 ? key.split('|')[1].slice(0, 30) : '#' + key;  // dd|facility key
     });
     parts.push('<strong>Plant:</strong> ' + labels.join(', '));
   }
@@ -2198,12 +2234,16 @@ function rp1(){
   const toD   = fv('f1to')||null;
 
   // ── ONA-ONLY data: uses ALL ONA plants (not limited to 441 matched) ──────
-  // Filter by district/dept from current filter selections
+  // Filter by district / department / plant / drill-date from current selections
   const selDist = msGet('ms1d');
   const selDept = msGet('ms1dept');
+  const selFacKeys = msGet('ms1p');  // district|facility keys (dd|sf) from ONA_ALL_PLANTS
   const onaAll  = ONA_ALL_PLANTS.filter(function(p) {
     if (selDist.length && !selDist.includes(p.dd)) return false;
     if (selDept.length && p.dept && !selDept.includes(p.dept)) return false;
+    if (selFacKeys.length && !selFacKeys.includes(p.dd+'|'+p.sf)) return false;
+    if (fromD && (!p.od || p.od < fromD)) return false;
+    if (toD   && (!p.od || p.od > toD))   return false;
     return true;
   });
   const onaFunc  = onaAll.filter(function(p){ return p.os === 'Functional'; });
@@ -2213,37 +2253,42 @@ function rp1(){
 
   // Record counts for this filtered view
   const onaAllRecords = onaAll.reduce(function(s,p){ return s + (p.cnt||0); }, 0);
+  const onaRange = window.ONA_RANGE || '';
 
   // ── KPIs — ONA-only ───────────────────────────────────────────────────────
+  const TOTAL_ONA_PLANTS = 541;  // fixed programme total (all PSA plants expected to report in ONA)
   document.getElementById('k1').innerHTML=[
-    kc('Total ONA plants', onaAll.length, onaAll.length+' plants · '+onaAllRecords+' drill records', '',
-      'Total unique PSA plant identities found in ALL ONA mock-drill data (not limited to registry-matched plants). Filtered by current district/department selection.',
-      onaAll.length+' plants · '+onaAllRecords+' records — no registry match required'),
-    kc('Functional (ONA)', onaFunc.length, pct(onaFunc.length, onaAll.length)+' of '+onaAll.length+' plants', 'g',
-      'Plants where the most recent ONA drill recorded status = Functional. Drawn from ALL '+onaAll.length+' ONA plants ('+onaAllRecords+' records).',
-      onaAll.length+' plants · '+onaAllRecords+' records', 'm-ona-status'),
-    kc('Non-functional (ONA)', onaNF.length, pct(onaNF.length, onaAll.length)+' of '+onaAll.length+' plants', 'r',
-      'Plants where the most recent ONA drill recorded status = Not-Functional. Drawn from ALL '+onaAll.length+' ONA plants ('+onaAllRecords+' records).',
-      onaAll.length+' plants · '+onaAllRecords+' records', 'm-ona-status'),
+    kc('Total ONA plants', TOTAL_ONA_PLANTS, 'PSA plants in the ONA programme', '',
+      'Total number of PSA plants expected to report through ONA mock-drills across Rajasthan (fixed programme total).',
+      'Fixed programme total'),
+    kc('Plants found reporting in ONA', onaAll.length, onaAll.length+' plants · '+onaAllRecords+' drill records', '',
+      'Unique PSA plant identities actually found in ONA mock-drill data for the current filter selection.',
+      onaAll.length+' plants · '+onaAllRecords+' records'),
+    kc('Functional (ONA)', onaFunc.length, pct(onaFunc.length, onaAll.length)+' of '+onaAll.length+' reporting', 'g',
+      'Plants where the most recent ONA drill recorded status = Functional. Out of '+onaAll.length+' reporting plants ('+onaAllRecords+' records).',
+      onaAll.length+' reporting plants · '+onaAllRecords+' records', 'm-ona-status'),
+    kc('Non-functional (ONA)', onaNF.length, pct(onaNF.length, onaAll.length)+' of '+onaAll.length+' reporting', 'r',
+      'Plants where the most recent ONA drill recorded status = Not-Functional. Out of '+onaAll.length+' reporting plants ('+onaAllRecords+' records).',
+      onaAll.length+' reporting plants · '+onaAllRecords+' records', 'm-ona-status'),
     kc('Avg purity — functional', avgPurAll ? avgPurAll+'%' : '—', 'Mean across '+onaFunc.length+' functional plants', avgPurAll>=93?'g':avgPurAll>=85?'a':'r',
       'Mean purity across all functional ONA plants with a valid purity reading (>0%). WHO threshold = 93%.',
-      onaAll.length+' plants · '+onaAllRecords+' records', 'm-purity'),
+      onaAll.length+' reporting plants · '+onaAllRecords+' records', 'm-purity'),
   ].join('');
 
   // ── Chart / widget calls ────────────────────────────────────────────────────
-  const onaFixed   = 'All ONA drills: Oct 2024 – Apr 2026';
+  const onaFixed   = onaRange ? ('ONA drills: ' + onaRange) : 'ONA drills';
   const selDistStr = selDist[0] || '';
 
   setPeriod('p1a-period', onaAll.length+' plants · '+onaAllRecords+' records · '+onaFixed);
-  // ONA timeline uses full ONA data (tlApply uses ONA_MONTHLY_ALL)
-  tlApplyAllONA(selDistStr, fromD, toD);
+  // ONA timeline uses full ONA data (tlApply uses ONA_MONTHLY_ALL — district + plant + date)
+  tlApplyAllONA(selDistStr, fromD, toD, selFacKeys);
   setPeriod('p1f-period', onaAll.length+' plants · '+onaAllRecords+' records · '+onaFixed);
   setPeriod('p1disc-period', onaAll.length+' ONA plants · '+onaAllRecords+' drill records · '+onaFixed);
 
-  // Purity trend uses ALL ONA data via ONA_MONTHLY_ALL
-  purDrawAllONA(selDistStr);
+  // Purity trend uses ALL ONA data via ONA_MONTHLY_ALL (district + plant + date)
+  purDrawAllONA(selDistStr, fromD, toD, selFacKeys);
 
-  // ONA Intelligence uses ALL ONA plants
+  // ONA Intelligence uses ALL ONA plants (district + dept + plant + date)
   onaIntelDraw(onaAll);
   updateChartFilterBars_(1);
 }
@@ -2914,7 +2959,8 @@ function purStatChip(label, val, sub) {
    and is never filtered by cross-dataset matching. */
 function rp2(){
   const euFrom=fv('f2from')||null, euTo=fv('f2to')||null;
-  const euDateLabel = euFrom||euTo ? ` — ${euFrom||'start'} to ${euTo||'today'}` : ' — May 2025 to Apr 2026 (all)';
+  const euRange = window.EU_RANGE || '';
+  const euDateLabel = euFrom||euTo ? ` — ${euFrom||'start'} to ${euTo||'today'}` : (euRange ? ' — '+euRange+' (all)' : ' (all)');
   const selDist2  = msGet('ms2d');
   const selPlant2 = msGet('ms2p');  // district|hospital keys from EU_ALL_PLANTS
   const selDistStr2 = selDist2[0] || '';
@@ -2962,15 +3008,15 @@ function rp2(){
 
   const euDrillPeriod = euFrom||euTo
     ? `${euAll.length} plants · ${euAllRecords} records · EU drill: ${euFrom||'start'} → ${euTo||'today'}`
-    : `${euAll.length} plants · ${euAllRecords} records · EU drill: May 2025 – Apr 2026`;
+    : `${euAll.length} plants · ${euAllRecords} records · EU drill: ${euRange||'all'}`;
   setPeriod('p2tl-period',   euDrillPeriod);
   setPeriod('p2pur-period',  euDrillPeriod);
   setPeriod('p2disc-period', euDrillPeriod);
 
-  // EU timeline uses ALL EU data via EU_MONTHLY_ALL
-  eutlApplyAllEU(selDistStr2, euFrom, euTo);
-  // EU purity uses ALL EU data
-  pur2DrawAllEU(selDistStr2, euFrom, euTo);
+  // EU timeline uses ALL EU data via EU_MONTHLY_ALL (district + plant + date)
+  eutlApplyAllEU(selDistStr2, euFrom, euTo, selPlant2);
+  // EU purity uses ALL EU data (district + plant + date)
+  pur2DrawAllEU(selDistStr2, euFrom, euTo, selPlant2);
   // EU Intelligence uses ALL EU plants
   euIntelDraw(euAll);
   updateChartFilterBars_(2);
@@ -2987,7 +3033,8 @@ function rpC(){
   // ─────────── (1) ONA × COMPLAINTS ───────────
   const cFrom = fv('fc1from')||null, cTo = fv('fc1to')||null;
   const cDist = msGet('msC1d');
-  const cDateLabel = cFrom||cTo ? ` — ${cFrom||'start'} to ${cTo||'today'}` : ' — Aug 2024 to Apr 2026 (all time)';
+  const compRange = window.COMP_RANGE || '';
+  const cDateLabel = cFrom||cTo ? ` — ${cFrom||'start'} to ${cTo||'today'}` : (compRange ? ' — '+compRange+' (all time)' : ' (all time)');
 
   // Only plants with verified-clean ONA→complaint mapping (ambiguous excluded).
   const baseps = RAW.slim_plants.filter(function(p){
@@ -3016,7 +3063,7 @@ function rpC(){
       'Resolved complaints'+cDateLabel, 'm-resolution'),
   ].join('');
 
-  const compPeriod = cFrom||cTo ? `Complaints: ${cFrom||'start'} → ${cTo||'today'}` : 'Complaints: Aug 2024 – Apr 2026 (all time)';
+  const compPeriod = cFrom||cTo ? `Complaints: ${cFrom||'start'} → ${cTo||'today'}` : ('Complaints: ' + (compRange ? compRange+' (all time)' : 'all time'));
   setPeriod('pC1-period', `${matchedN} verified-clean plants · ${COMPLAINTS_TOTAL} complaint records · ${compPeriod}`);
   const allowedCodes = new Set(baseps.map(function(p){ return String(p.c); }));
   fcDraw(cDist[0]||'', cFrom, cTo, allowedCodes);
@@ -3325,10 +3372,11 @@ function _euIntelRenderDetail(body, ps) {
 /* ===================== END EU INTELLIGENCE WIDGET ===================== */
 
 /* ── EU timeline using ALL EU drills (EU_MONTHLY_ALL) ── */
-function eutlApplyAllEU(dist, euFrom, euTo) {
+function eutlApplyAllEU(dist, euFrom, euTo, facKeys) {
   eutlDistFilter = dist || '';
   eutlEuFrom = euFrom || null;
   eutlEuTo   = euTo   || null;
+  eutlFacKeys = (facKeys && facKeys.length) ? facKeys : null;
   if (eutlMode === 'overview') eutlDrawAllEU();
 }
 
@@ -3339,6 +3387,7 @@ function eutlDrawAllEU() {
 
   let rows = EU_MONTHLY_ALL;
   if (eutlDistFilter) rows = rows.filter(function(r){ return r.dist === eutlDistFilter; });
+  rows = applyFacFilter_(rows, eutlFacKeys);
   if (eutlEuFrom) rows = rows.filter(function(r){ return r.m >= eutlEuFrom.slice(0,7); });
   if (eutlEuTo)   rows = rows.filter(function(r){ return r.m <= eutlEuTo.slice(0,7); });
 
@@ -3380,7 +3429,7 @@ function eutlDrawAllEU() {
 }
 
 /* ── EU purity trend using ALL EU drills (EU_MONTHLY_ALL) ── */
-function pur2DrawAllEU(dist, euFrom, euTo) {
+function pur2DrawAllEU(dist, euFrom, euTo, facKeys) {
   pur2Mode = 'overview';
   document.getElementById('pur2-breadcrumb').style.display = 'none';
   document.getElementById('pur2-title').textContent = 'Purity trend — e-Upkaran drills';
@@ -3388,6 +3437,7 @@ function pur2DrawAllEU(dist, euFrom, euTo) {
   const container = document.getElementById('pur2-container');
   let rows = EU_MONTHLY_ALL;
   if (dist) rows = rows.filter(function(r){ return r.dist === dist; });
+  rows = applyFacFilter_(rows, (facKeys && facKeys.length) ? facKeys : null);
   if (euFrom) rows = rows.filter(function(r){ return r.m >= euFrom.slice(0,7); });
   if (euTo)   rows = rows.filter(function(r){ return r.m <= euTo.slice(0,7); });
 
@@ -3454,6 +3504,7 @@ function pur2DrawAllEU(dist, euFrom, euTo) {
 /* ===================== EU TIMELINE WIDGET (mirrors tl*) ===================== */
 let eutlMode='overview', eutlActiveMonth=null, eutlDistFilter='';
 let eutlStatusFilter='', eutlEuFrom=null, eutlEuTo=null, eutlPlantFilter='';
+let eutlFacKeys=null;   // district|facility keys for per-plant trend filtering
 
 function eutlDraw(dist, statusFilter, euFrom, euTo, plantFilter){
   eutlMode='overview'; eutlActiveMonth=null;
@@ -4100,7 +4151,7 @@ function pur2Init(){pur2DrawOverview();}
 function rp3(){
   const repSel='';
   const drillFrom=fv('f3from')||null, drillTo=fv('f3to')||null;
-  const drillDateLabel = drillFrom||drillTo ? ` — ${drillFrom||'start'} to ${drillTo||'today'}` : ' — May 2025 to Apr 2026 (all)';
+  const drillDateLabel = drillFrom||drillTo ? ` — ${drillFrom||'start'} to ${drillTo||'today'}` : (window.EU_RANGE ? ' — '+window.EU_RANGE+' (all)' : ' (all)');
 
   // ── Registry funnel top: ALL registry assets (not capped to 441 matched) ──
   const selDist3  = msGet('ms3d');
@@ -4117,7 +4168,13 @@ function rp3(){
   const unverified= regAll.filter(function(p){ return !p.iv && p.hq; });
 
   // ── Reporting status: from matched plants only (EU drill linkage requires mapping) ──
-  let ps=fp(RAW.slim_plants,'3').filter(function(p){ return true; });
+  // Filter by the SAME district + facility keys as the registry funnel above
+  // (slim_plants.sf = sih_facility, which matches REGISTRY_ALL.sf = hospital).
+  let ps = RAW.slim_plants.filter(function(p){
+    if (selDist3.length  && !selDist3.includes(p.dd)) return false;
+    if (selPlant3.length && !selPlant3.includes(p.dd+'|'+p.sf)) return false;
+    return true;
+  });
 
   // Reporting: apply drill date filter
   const repRecent=ps.filter(p=>{
@@ -4470,13 +4527,24 @@ let tlDistrictFilter = '';
 let tlAllowedCodes   = null;
 let tlFromD          = null;
 let tlToD            = null;
+let tlFacKeys        = null;   // district|facility keys for per-plant filtering
+
+/* Filter month×plant aggregate rows by district|facility keys.
+   No-op when nothing is selected, or when the rows have no facility column yet
+   (backward compatible with monthly data produced before the per-plant derive). */
+function applyFacFilter_(rows, facKeys){
+  if (!facKeys || !facKeys.length) return rows;
+  if (!rows.some(function(r){ return r.fac; })) return rows;
+  return rows.filter(function(r){ return facKeys.indexOf(r.dist+'|'+r.fac) !== -1; });
+}
 
 /* ── tlApplyAllONA: ONA timeline using ALL ONA drills (ONA_MONTHLY_ALL) ── */
-function tlApplyAllONA(dist, fromD, toD) {
+function tlApplyAllONA(dist, fromD, toD, facKeys) {
   tlDistrictFilter = dist || '';
   tlAllowedCodes   = null;   // null = no code restriction
   tlFromD = fromD || null;
   tlToD   = toD   || null;
+  tlFacKeys = (facKeys && facKeys.length) ? facKeys : null;
   if (tlMode === 'overview') tlDrawAllONA();
   // else: keep current drill-down view unchanged
 }
@@ -4486,9 +4554,10 @@ function tlDrawAllONA() {
   const container = document.getElementById('tl-container');
   const barH = 180, barW = 38, gap = 6;
 
-  // Filter ONA_MONTHLY_ALL by district and date range
+  // Filter ONA_MONTHLY_ALL by district, plant (facility) and date range
   let rows = ONA_MONTHLY_ALL;
   if (tlDistrictFilter) rows = rows.filter(function(r){ return r.dist === tlDistrictFilter; });
+  rows = applyFacFilter_(rows, tlFacKeys);
   if (tlFromD) rows = rows.filter(function(r){ return r.m >= tlFromD.slice(0,7); });
   if (tlToD)   rows = rows.filter(function(r){ return r.m <= tlToD.slice(0,7); });
 
@@ -4534,9 +4603,13 @@ function tlDrawAllONA() {
 }
 
 /* ── purDrawAllONA: ONA purity overview using ALL ONA drills ── */
-function purDrawAllONA(dist) {
+let purFromD = null, purToD = null, purFacKeys = null;
+function purDrawAllONA(dist, fromD, toD, facKeys) {
   purMode = 'overview';
   purAllowedCodes = null;
+  purFromD = fromD || null;
+  purToD   = toD   || null;
+  purFacKeys = (facKeys && facKeys.length) ? facKeys : null;
   document.getElementById('pur-breadcrumb').style.display = 'none';
   document.getElementById('pur-title').textContent = 'Purity trend — functional plants (ONA)';
   purDrawAllONAOverview(dist);
@@ -4545,9 +4618,12 @@ function purDrawAllONA(dist) {
 function purDrawAllONAOverview(dist) {
   const container = document.getElementById('pur-container');
 
-  // Filter ONA_MONTHLY_ALL by district; aggregate purity by month
+  // Filter ONA_MONTHLY_ALL by district + plant (facility) + drill-date range; aggregate by month
   let rows = ONA_MONTHLY_ALL;
   if (dist) rows = rows.filter(function(r){ return r.dist === dist; });
+  rows = applyFacFilter_(rows, purFacKeys);
+  if (purFromD) rows = rows.filter(function(r){ return r.m >= purFromD.slice(0,7); });
+  if (purToD)   rows = rows.filter(function(r){ return r.m <= purToD.slice(0,7); });
 
   // Aggregate avg_purity by month (weighted average across districts)
   const byM = {};
@@ -4909,7 +4985,7 @@ function fnDrawStatus() {
       key: 'ever', label: 'Ever reported a drill', v: repEver.length, pct: Math.round(repEver.length/N*100),
       color: '#0F6E56',
       dropLabel: `${verified.length - repEver.length} verified but never reported`,
-      detail: `${repEver.length} plants have submitted at least one e-Upkaran mock-drill since programme start (May 2025).`,
+      detail: `${repEver.length} plants have submitted at least one e-Upkaran mock-drill${window.EU_RANGE ? ' ('+window.EU_RANGE+')' : ''}.`,
       drillable: true
     },
     {
@@ -5331,7 +5407,8 @@ function msUpdateTrigger(id) {
       label.textContent = v;
     } else {
       const p = RAW.slim_plants.find(x=>String(x.c)===v);
-      label.textContent = p ? `#${p.c} ${(p.sf||p.of).slice(0,24)}…` : `#${v}`;
+      label.textContent = p ? `#${p.c} ${(p.sf||p.of).slice(0,24)}…`
+        : (v.indexOf('|')!==-1 ? v.split('|')[1].slice(0,28) : `#${v}`);
     }
     count.style.display = 'none';
   } else {
@@ -5555,7 +5632,15 @@ function registerAIFns() {
 
   // Filter plant set matching what rp1/rp2/rp3 would use
   function filteredPlants(pgIdx) {
-    return typeof fp === 'function' ? fp(RAW.slim_plants, String(pgIdx)) : RAW.slim_plants;
+    if (typeof fp !== 'function') return RAW.slim_plants;
+    var res = fp(RAW.slim_plants, String(pgIdx));
+    // Plant dropdowns are keyed by district|facility (not code), so fp's code-based
+    // plant match yields nothing — fall back to district filtering so AI isn't empty.
+    if (!res.length && (msGet('ms'+pgIdx+'p')||[]).length) {
+      var d = msGet('ms'+pgIdx+'d') || [];
+      res = RAW.slim_plants.filter(function(p){ return !d.length || d.indexOf(p.dd) !== -1; });
+    }
+    return res;
   }
 
   // Filter complaints by date

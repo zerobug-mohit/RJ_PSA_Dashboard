@@ -543,28 +543,32 @@ function deriveDashboard() {
   // BUILD ona_monthly_all  (ALL ONA drills aggregated by month+district)
   // Used for ONA timeline and purity overview — not limited to 441 matched.
   // ------------------------------------------------------------------
-  const onaMonthMap = {}; // "month|district" → {total, f, n, purs:[]}
+  // Aggregated by month + district + FACILITY so the dashboard can filter the
+  // ONA trend charts by an individual plant (facility = normalized ONA facility
+  // name, matching ona_all_plants.facility / ONA_ALL_PLANTS.sf in the client).
+  const onaMonthMap = {}; // "month|district|facNorm" → {total, f, n, purs:[]}
   onaParsed.forEach(function(d) {
     if (!d.od) return;
     var m    = d.od.slice(0, 7);
     var dist = districtDisplay(d.distNorm);
-    var key  = m + '|' + dist;
-    if (!onaMonthMap[key]) onaMonthMap[key] = { month: m, district: dist, total: 0, f: 0, n: 0, purs: [] };
+    var fac  = d.facNorm || '';
+    var key  = m + '|' + dist + '|' + fac;
+    if (!onaMonthMap[key]) onaMonthMap[key] = { month: m, district: dist, facility: fac, total: 0, f: 0, n: 0, purs: [] };
     onaMonthMap[key].total++;
     if (d.os === 'Functional' || d.os === 'Functional Installed') onaMonthMap[key].f++;
     else onaMonthMap[key].n++;
     if (d.op != null) onaMonthMap[key].purs.push(d.op);
   });
 
-  const onaMonthlyHeaders = ['month','district','total','functional','not_functional','avg_purity'];
+  const onaMonthlyHeaders = ['month','district','facility','total','functional','not_functional','avg_purity'];
   const onaMonthlyRows = Object.values(onaMonthMap).sort(function(a,b) {
-    var ka = a.month + '|' + a.district, kb = b.month + '|' + b.district;
+    var ka = a.month + '|' + a.district + '|' + a.facility, kb = b.month + '|' + b.district + '|' + b.facility;
     return ka < kb ? -1 : 1;
   }).map(function(s) {
     var avgP = s.purs.length ? (s.purs.reduce(function(a,b){return a+b;},0)/s.purs.length).toFixed(1) : '';
-    return [s.month, s.district, s.total, s.f, s.n, avgP];
+    return [s.month, s.district, s.facility, s.total, s.f, s.n, avgP];
   });
-  Logger.log('ONA monthly-all: ' + onaMonthlyRows.length + ' month×district rows');
+  Logger.log('ONA monthly-all: ' + onaMonthlyRows.length + ' month×district×facility rows');
 
   const onaDrillsByCode = {}; // code → [drill]
   const onaTimeline     = []; // flat rows for ona_timeline tab
@@ -722,27 +726,30 @@ function deriveDashboard() {
   });
   Logger.log('EU all-plants: ' + euAllPlantsRows.length + ' unique identities');
 
-  // BUILD eu_monthly_all — ALL EU drills aggregated by month+district
+  // BUILD eu_monthly_all — ALL EU drills aggregated by month + district + FACILITY
+  // (facility = normalized hospital name, matching eu_all_plants.hospital /
+  // EU_ALL_PLANTS.sf in the client) so EU trend charts can be filtered per plant.
   const euMonthMap = {};
   euParsed.forEach(function(d) {
     if (!d.ed) return;
     var m    = d.ed.slice(0, 7);
     var dist = districtDisplay(d.distNorm);
-    var key  = m + '|' + dist;
-    if (!euMonthMap[key]) euMonthMap[key] = { month: m, district: dist, total: 0, f: 0, n: 0, purs: [] };
+    var fac  = d.hospNorm || '';
+    var key  = m + '|' + dist + '|' + fac;
+    if (!euMonthMap[key]) euMonthMap[key] = { month: m, district: dist, facility: fac, total: 0, f: 0, n: 0, purs: [] };
     euMonthMap[key].total++;
     if (d.es === 'Functional' || d.es === 'Functional Installed') euMonthMap[key].f++;
     else euMonthMap[key].n++;
     if (d.ep != null && d.ep > 0) euMonthMap[key].purs.push(d.ep);
   });
-  const euMonthlyHeaders = ['month','district','total','functional','not_functional','avg_purity'];
+  const euMonthlyHeaders = ['month','district','facility','total','functional','not_functional','avg_purity'];
   const euMonthlyRows = Object.values(euMonthMap).sort(function(a,b) {
-    return (a.month+'|'+a.district) < (b.month+'|'+b.district) ? -1 : 1;
+    return (a.month+'|'+a.district+'|'+a.facility) < (b.month+'|'+b.district+'|'+b.facility) ? -1 : 1;
   }).map(function(s) {
     var avgP = s.purs.length ? (s.purs.reduce(function(a,b){return a+b;},0)/s.purs.length).toFixed(1) : '';
-    return [s.month, s.district, s.total, s.f, s.n, avgP];
+    return [s.month, s.district, s.facility, s.total, s.f, s.n, avgP];
   });
-  Logger.log('EU monthly-all: ' + euMonthlyRows.length + ' month×district rows');
+  Logger.log('EU monthly-all: ' + euMonthlyRows.length + ' month×district×facility rows');
 
   // ------------------------------------------------------------------
   // STEP E — Complaints → Code via QR → registry
