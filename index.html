@@ -2213,12 +2213,11 @@ function _onaIntelRenderOverview(body, ps) {
   const sch = {};
   ps.forEach(p => {
     const s = p.osc || 'Unknown';
-    if (!sch[s]) sch[s] = { count:0, f:0, nf:0, purs:[], comps:0 };
+    if (!sch[s]) sch[s] = { count:0, f:0, nf:0, purs:[] };
     sch[s].count++;
     if (p.os === 'Functional')     sch[s].f++;
     if (p.os === 'Not-Functional') sch[s].nf++;
     if (p.op != null) sch[s].purs.push(p.op);
-    sch[s].comps += p.ct || 0;
   });
 
   const schHtml = Object.entries(sch).sort((a,b) => b[1].count - a[1].count).map(([name, d]) => {
@@ -2240,7 +2239,6 @@ function _onaIntelRenderOverview(body, ps) {
         <span style="font-size:10px;color:#1D9E75">✓ ${d.f} (${pct}%)</span>
         <span style="font-size:10px;color:#E24B4A">✗ ${d.nf} Non-Functional</span>
         ${avgP ? `<span style="font-size:10px;color:var(--muted)">⊙ ${avgP}%</span>` : ''}
-        ${d.comps ? `<span style="font-size:10px;color:var(--muted)">⚑ ${d.comps}</span>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -2384,7 +2382,6 @@ function _onaIntelRenderDetail(body, ps) {
       + '<td>' + badge(p.os||'—', p.os==='Functional'?'g':p.os==='Not-Functional'?'r':'gr') + '</td>'
       + '<td style="text-align:center">' + purTxt + '</td>'
       + '<td>' + ageTxt + '</td>'
-      + '<td style="font-size:11px;text-align:center">' + (p.ct||0) + '</td>'
       + '<td>' + reaLabel + '</td>'
       + '</tr>';
   }).join('');
@@ -2396,9 +2393,9 @@ function _onaIntelRenderDetail(body, ps) {
     + '<table class="tbl"><thead><tr>'
     + '<th>District</th><th>Facility</th><th>LPM</th><th>Scheme</th>'
     + '<th>ONA Status</th><th>Purity</th><th>Last Drill</th>'
-    + '<th>Complaints</th><th>Non-Functional Reason</th>'
+    + '<th>Non-Functional Reason</th>'
     + '</tr></thead><tbody>'
-    + (rows || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
+    + (rows || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
     + '</tbody></table></div>';
 }
 /* ===================== END ONA INTELLIGENCE WIDGET ===================== */
