@@ -1917,7 +1917,7 @@ function rp4() {
     '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
     'The e-Upkaran × Complaints page uses a <b>direct cross-reference</b> from the registry — no ONA mapping is involved. ',
     'EU drills and complaints are both matched to registry assets by <b>District + Hospital Name + Capacity</b>. ',
-    'When a registry location has multiple PSA plants (duplicate DHC key), QR code is used as tiebreaker for both drills and complaints. ',
+    'When a location has multiple PSA plants (shared District+Hospital+Capacity), <b>Manufacturer</b> is used as the first tiebreaker, followed by <b>QR code</b> if still ambiguous. ',
     'This page is not affected by ONA mapping ambiguities.',
     '</div>',
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">',

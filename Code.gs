@@ -760,6 +760,7 @@ function deriveDashboard() {
       hosp: normName(c['Hospital Name']                   || c['_col2'] || ''),
       cap:  parseCap(c['Capacity of PSA Plant (in LPM)']  || c['_col3'] || ''),
       qr:   qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || '')),
+      mfr:  normMfr(c['Manufacturer'] || c['Supplier'] || c['Service Provider'] || c['_col5'] || ''),
     };
   });
   Logger.log('Complaints pre-parsed: ' + compParsed.filter(function(c){ return !!c.dist; }).length + ' rows with district');
@@ -822,6 +823,16 @@ function deriveDashboard() {
     }
 
     if (!candidates.length) { missesE.push(comp.dist + '|' + comp.hosp); return; }
+
+    // Progressive tiebreaker: Manufacturer → QR
+    if (candidates.length > 1 && comp.mfr) {
+      var mfrTok = comp.mfr.split(' ')[0];
+      var byMfr = candidates.filter(function(c) {
+        var assetMfr = codeMap[c] ? codeMap[c].asset.supplier : '';
+        return assetMfr && assetMfr.indexOf(mfrTok) !== -1;
+      });
+      if (byMfr.length > 0 && byMfr.length < candidates.length) candidates = byMfr;
+    }
 
     var ownerCode = null;
     if (candidates.length === 1) {
@@ -918,19 +929,37 @@ function deriveDashboard() {
     var sortedEU = euHits.filter(function(d){return d.date;}).sort(function(a,b){return a.date>b.date?-1:1;});
     var latestEU = sortedEU[0] || euHits[0];
 
-    // Match complaints by District+Hospital+Capacity (same as EU drill matching).
-    // For registry assets sharing a DHC key (multiple plants at same location+capacity),
-    // QR is used as tiebreaker so each plant only receives its own complaints.
+    // Match complaints by District+Hospital+Capacity+Manufacturer, with QR as final tiebreaker.
+    // Progressive narrowing only applies when the registry has multiple assets at the same
+    // DHC key — for unique locations the D+H+C match is sufficient.
     var regComps = [];
     var isDHCShared = (byDHC[regDist + '|' + regHosp + '|' + regCap] || []).length > 1;
-    compParsed.forEach(function(comp) {
-      if (!comp.dist) return;
-      if (comp.dist !== regDist) return;
+
+    var compMatches = compParsed.filter(function(comp) {
+      if (!comp.dist) return false;
+      if (comp.dist !== regDist) return false;
       if (comp.hosp !== regHosp) {
-        if (comp.hosp.indexOf(regHosp) === -1 && regHosp.indexOf(comp.hosp) === -1) return;
+        if (comp.hosp.indexOf(regHosp) === -1 && regHosp.indexOf(comp.hosp) === -1) return false;
       }
-      if (regCap && comp.cap && comp.cap !== regCap) return;
-      if (isDHCShared && qr && comp.qr && comp.qr !== qr) return;
+      if (regCap && comp.cap && comp.cap !== regCap) return false;
+      return true;
+    });
+
+    if (isDHCShared && compMatches.length > 1) {
+      // Tiebreaker 1: Manufacturer
+      if (regMfr) {
+        var mfrTok = regMfr.split(' ')[0];
+        var byMfr2 = compMatches.filter(function(comp) { return comp.mfr && comp.mfr.indexOf(mfrTok) !== -1; });
+        if (byMfr2.length > 0) compMatches = byMfr2;
+      }
+      // Tiebreaker 2: QR (only if still ambiguous after manufacturer)
+      if (compMatches.length > 1 && qr) {
+        var byQR2 = compMatches.filter(function(comp) { return comp.qr === qr; });
+        if (byQR2.length > 0) compMatches = byQR2;
+      }
+    }
+
+    compMatches.forEach(function(comp) {
       var c = comp.raw;
       var raiseD  = fromExcel(c['Complaint Raise Date']   || c['_col6'] || '');
       var attendD = fromExcel(c['Complaint Attend date']  || c['_col9'] || '');
