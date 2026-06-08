@@ -582,9 +582,43 @@ input[type=date]:focus{outline:none;border-color:#aaa}
 }
 #api-key-clear-btn:hover{color:var(--red-text)}
 .topbar-right{position:relative}
+.dr-section{background:var(--card);border-radius:10px;padding:18px 20px;margin-bottom:18px;border:1px solid var(--border)}
+.dr-section-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.dr-badge{display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;margin-left:6px}
+.dr-badge-g{background:#d4edda;color:#1a7f43}
+.dr-badge-r{background:#fde8e8;color:#b91c1c}
+.dr-badge-a{background:#fff3cd;color:#856404}
+.dr-badge-b{background:#dbeafe;color:#1d4ed8}
+.dr-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:4px}
+.dr-stat{background:var(--bg);border-radius:8px;padding:12px 14px;border:1px solid var(--border)}
+.dr-stat-val{font-size:22px;font-weight:700;color:var(--text);line-height:1}
+.dr-stat-label{font-size:11px;color:var(--muted);margin-top:4px}
+.dr-stat-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.dr-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+.dr-table th{font-weight:600;color:var(--muted);text-align:left;padding:6px 10px;border-bottom:2px solid var(--border);background:var(--bg);font-size:11px;white-space:nowrap}
+.dr-table td{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:top;line-height:1.4}
+.dr-table tr:last-child td{border-bottom:none}
+.dr-table tr:hover td{background:var(--bg)}
+.dr-collapsible{cursor:pointer;user-select:none}
+.dr-collapsible:hover .dr-section-title{color:var(--blue)}
+.dr-collapsible-body{display:none;margin-top:10px;overflow-x:auto}
+.dr-collapsible.open .dr-collapsible-body{display:block}
+.dr-meth-chip{display:inline-block;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600;font-family:monospace}
+.chip-qr{background:#dbeafe;color:#1d4ed8}
+.chip-dhc{background:#d4edda;color:#1a7f43}
+.chip-f1,.chip-f2,.chip-f3,.chip-f4{background:#fff3cd;color:#856404}
+.chip-miss{background:#fde8e8;color:#b91c1c}
+.chip-dhc_multi{background:#fde8e8;color:#b91c1c}
+.chip-qr_conflict{background:#fde8e8;color:#b91c1c}
+.chip-dhc_multi_qr_conflict{background:#fde8e8;color:#b91c1c}
+.chip-clean{background:#d4edda;color:#1a7f43}
+.chip-ambiguous{background:#fde8e8;color:#b91c1c}
+.dr-export-btn{background:#1a1a2e;color:#fff;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px}
+.dr-export-btn:hover{background:#2d2d4e}
 </style>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
-<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tab active" onclick="switchTab(0)">ONA &times; Complaints</div> <div class="tab" onclick="switchTab(1)">e-Upkaran &times; Complaints</div> <div class="tab" onclick="switchTab(2)">QR Code Coverage</div> <div class="tab" onclick="switchTab(3)">Methodology</div> <div class="topbar-right"> <span class="stamp">Data as of 17 Apr 2026 &nbsp;|&nbsp; 471 matched plants</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <span id="dash-ver" style="font-size:9px;color:var(--muted);opacity:0.6">v60e</span> <div style="position:relative">
+<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tab active" onclick="switchTab(0)">ONA &times; Complaints</div> <div class="tab" onclick="switchTab(1)">e-Upkaran &times; Complaints</div> <div class="tab" onclick="switchTab(2)">QR Code Coverage</div> <div class="tab" onclick="switchTab(3)">Methodology</div> <div class="tab" onclick="switchTab(4)">Data Report</div> <div class="topbar-right"> <span class="stamp">Data as of 17 Apr 2026 &nbsp;|&nbsp; 471 matched plants</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <span id="dash-ver" style="font-size:9px;color:var(--muted);opacity:0.6">v60e</span> <div style="position:relative">
 <div id="psa-loading-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;font-family:inherit">
   <div style="text-align:center"><div style="font-size:17px;font-weight:600;color:#1a1a2e;margin-bottom:16px">Loading PSA Dashboard…</div><div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top-color:#1a1a2e;border-radius:50%;animation:psa-spin 0.8s linear infinite;margin:0 auto"></div></div></div>
 <style>@keyframes psa-spin{to{transform:rotate(360deg)}}</style>
@@ -632,6 +666,7 @@ var EU_ALL_PLANTS   = []; // ALL EU plant identities — not limited to 441 matc
 var EU_MONTHLY_ALL  = []; // ALL EU drills aggregated by month+district
 var REGISTRY_ALL    = []; // ALL 515 registry assets for Page 3 funnel
 var EU_CROSS        = []; // Direct EU×Registry×Complaints — all registry assets with EU/complaint data
+var MAPPING_REPORT  = []; // Per-code mapping status from Code.gs derive step
 var FC  = {};
 
 /* ---------- Sheets API v4 fetch ---------- */
@@ -827,6 +862,7 @@ async function loadDashboard() {
     const euMonthVals     = await fetchTab('eu_monthly_all').catch(function(){ return []; });
     const registryVals    = await fetchTab('registry_plants').catch(function(){ return []; });
     const euCrossVals     = await fetchTab('eu_direct_cross').catch(function(){ return []; });
+    const mappingRptVals  = await fetchTab('mapping_report').catch(function(){ return []; });
     const metaVals        = await fetchTab('meta').catch(function() { return []; });
 
     /* --- plants → RAW.slim_plants --- */
@@ -861,6 +897,7 @@ async function loadDashboard() {
         re:  isTruthy(r.reporting_ever),
         rr:  isTruthy(r.reporting_recent),
         ds:  r.days_since_drill   !== '' ? +r.days_since_drill   : null,
+        cln: isTruthy(r.complaint_clean),
         cl:  (function(){ try { return r.complaints ? JSON.parse(r.complaints) : []; } catch(e){ console.error('Complaint JSON parse failed for plant',r.code,':',e.message); return []; } })(),
       };
     });
@@ -981,6 +1018,26 @@ async function loadDashboard() {
     });
     console.log('EU_CROSS loaded: ' + EU_CROSS.length + ' registry assets');
 
+    MAPPING_REPORT = rowsToObjects(mappingRptVals).map(function(r) {
+      return {
+        code:             r.code,
+        ona_district:     r.ona_district,
+        ona_facility:     r.ona_facility,
+        ona_capacity:     r.ona_capacity  || '',
+        ona_manufacturer: r.ona_manufacturer || '',
+        sih_district:     r.sih_district,
+        sih_facility:     r.sih_facility,
+        sih_capacity:     r.sih_capacity  || '',
+        sih_manufacturer: r.sih_manufacturer || '',
+        match_method:     r.match_method,
+        matched_district: r.matched_district,
+        matched_hospital: r.matched_hospital,
+        matched_capacity: r.matched_capacity,
+        complaint_clean:  r.complaint_clean === 'true',
+        ambiguity_reason: r.ambiguity_reason || '',
+      };
+    });
+
     /* --- REGISTRY_ALL: all 515 registry assets for Page 3 funnel --- */
     REGISTRY_ALL = rowsToObjects(registryVals).map(function(r) {
       return {
@@ -1068,6 +1125,7 @@ async function loadDashboard() {
 
     /* --- Dataset totals (for "N records · M plants" labels) --- */
     const metaObj = metaToObject(metaVals);
+    window._lastBuiltAt = metaObj.built_at || '—';
     // coverage_E is "matched/total" e.g. "563/620" — extract the total
     COMPLAINTS_TOTAL = parseInt(((metaObj.coverage_E||'0/0').split('/')[1])) || 0;
     const stamEl  = document.querySelector('.stamp');
@@ -1685,9 +1743,313 @@ function avg(arr){return arr.length?parseFloat((arr.reduce((a,b)=>a+b,0)/arr.len
 
 function setPeriod(id, text){ const el=document.getElementById(id); if(el) el.textContent = '⏱ '+text; }
 
+/* ===================== PAGE 4 — DATA REPORT ===================== */
+var MAPPING_REPORT_RENDERED = false;
+
+function drToggle(el) {
+  el.classList.toggle('open');
+}
+
+function drMethodChip(m) {
+  if (!m) return '';
+  var cls = 'chip-' + m.toLowerCase().replace(/[^a-z0-9]/g, '_');
+  return '<span class="dr-meth-chip ' + cls + '">' + m + '</span>';
+}
+
+function drCleanChip(clean) {
+  return clean
+    ? '<span class="dr-meth-chip chip-clean">✓ Clean</span>'
+    : '<span class="dr-meth-chip chip-ambiguous">⚠ Ambiguous</span>';
+}
+
+function drReasonLabel(r) {
+  if (!r) return '—';
+  if (r === 'DHC_MULTI') return 'Multiple plants share same District+Hospital+Capacity key';
+  if (r === 'QR_CONFLICT') return 'Two ONA codes resolve to the same registry QR code';
+  if (r === 'DHC_MULTI+QR_CONFLICT') return 'Both: ambiguous DHC bucket AND QR conflict';
+  if (r === 'NO_REGISTRY_MATCH') return 'No matching registry asset found for this SIH entry';
+  return r;
+}
+
+function rp4() {
+  if (!MAPPING_REPORT.length) {
+    document.getElementById('dr-subtitle').textContent = 'mapping_report tab not yet available — run Refresh Data first';
+    return;
+  }
+
+  const builtAt = (function() {
+    if (!RAW.slim_plants || !RAW.slim_plants.length) return '—';
+    return window._lastBuiltAt || '—';
+  })();
+  document.getElementById('dr-subtitle').textContent =
+    'Dynamic — updates automatically on every data refresh  |  Last derive: ' + (window._lastBuiltAt || '—');
+
+  const all      = MAPPING_REPORT;
+  const matched  = all.filter(function(r){ return r.match_method !== 'MISS'; });
+  const misses   = all.filter(function(r){ return r.match_method === 'MISS'; });
+  const ambiguous = all.filter(function(r){ return !r.complaint_clean && r.match_method !== 'MISS'; });
+  const clean    = matched.filter(function(r){ return r.complaint_clean; });
+  const withQR   = matched.filter(function(r){ return r.match_method === 'QR'; });
+  const withDHC  = matched.filter(function(r){ return r.match_method === 'DHC'; });
+  const withFB   = matched.filter(function(r){ return ['F1','F2','F3','F4'].indexOf(r.match_method) !== -1; });
+
+  const regTotal = REGISTRY_ALL.length || EU_CROSS.length;
+  const regWithQR = REGISTRY_ALL.filter(function(r){ return r.has_qr === 'true' || r.has_qr === true; }).length;
+  const euWithDrill = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0; }).length;
+  const euWithComp  = EU_CROSS.filter(function(r){ return +r.complaint_count > 0; }).length;
+  const euBoth      = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0 && +r.complaint_count > 0; }).length;
+  const onaAllCt   = ONA_ALL_PLANTS.length;
+  const euAllCt    = EU_ALL_PLANTS.length;
+
+  /* ── SUMMARY ── */
+  document.getElementById('dr-summary').innerHTML = [
+    '<div class="dr-section">',
+    '<div class="dr-section-title">Summary — Data Coverage Across All Sources</div>',
+    '<div class="dr-stat-grid">',
+    drStat(regTotal, 'Registry (Stock-in-Hand)', 'Total PSA plant entries in registry', ''),
+    drStat(regWithQR, 'Registry with QR Code', 'Plants with scannable QR for complaint linkage', regTotal ? Math.round(regWithQR/regTotal*100)+'%' : ''),
+    drStat(onaAllCt, 'ONA Plants (all)', 'Unique plant identities in ONA mock-drill data', ''),
+    drStat(matched.length + '/' + all.length, 'ONA→Registry Matched', 'Mapping codes resolved to a registry asset', ''),
+    drStat(clean.length, 'ONA — Verified-Clean Complaint Link', 'Unambiguous ONA↔Registry↔Complaint chain', ''),
+    drStat(euAllCt, 'EU Plants (all)', 'Unique plant identities in e-Upkaran drill data', ''),
+    drStat(euWithDrill, 'Registry with EU Drill', 'Registry assets matched to ≥1 EU drill', regTotal ? Math.round(euWithDrill/regTotal*100)+'%' : ''),
+    drStat(COMPLAINTS_TOTAL, 'Total Complaint Records', 'All complaint records in source data', ''),
+    drStat(euWithComp, 'Registry with Complaints', 'Registry assets with ≥1 complaint (QR-matched)', regTotal ? Math.round(euWithComp/regTotal*100)+'%' : ''),
+    '</div>',
+    '</div>',
+  ].join('');
+
+  /* ── SECTION 1: ONA ↔ Registry ── */
+  var s1MatchedRows = matched.map(function(r) {
+    var capMatch = r.ona_capacity && r.matched_capacity && r.ona_capacity !== r.matched_capacity
+      ? '<span style="color:#856404" title="ONA cap: '+r.ona_capacity+' vs Registry cap: '+r.matched_capacity+'">⚠ '+r.matched_capacity+'</span>'
+      : (r.matched_capacity||'—');
+    return '<tr><td>' + r.code + '</td><td>' + (r.ona_district||'—') + '</td>'
+      + '<td style="max-width:180px">' + (r.ona_facility||'—') + '</td>'
+      + '<td style="text-align:center">' + (r.ona_capacity||'—') + '</td>'
+      + '<td style="max-width:160px">' + (r.matched_hospital||'—') + '</td>'
+      + '<td>' + (r.matched_district||'—') + '</td>'
+      + '<td style="text-align:center">' + capMatch + '</td>'
+      + '<td>' + drMethodChip(r.match_method) + '</td>'
+      + '<td>' + drCleanChip(r.complaint_clean) + '</td></tr>';
+  }).join('');
+
+  var s1MissRows = misses.map(function(r) {
+    return '<tr><td>' + r.code + '</td><td>' + (r.ona_district||'—') + '</td><td>' + (r.ona_facility||'—') + '</td>'
+      + '<td>' + (r.sih_district||'—') + '</td><td>' + (r.sih_facility||'—') + '</td><td>' + (r.sih_capacity||'—') + '</td>'
+      + '<td>' + drMethodChip('MISS') + '</td><td style="color:#b91c1c;font-size:11px">' + drReasonLabel(r.ambiguity_reason) + '</td></tr>';
+  }).join('');
+
+  var s1AmbigRows = ambiguous.map(function(r) {
+    return '<tr><td>' + r.code + '</td><td>' + (r.ona_district||'—') + '</td><td style="max-width:180px">' + (r.ona_facility||'—') + '</td>'
+      + '<td style="max-width:160px">' + (r.matched_hospital||'—') + '</td><td>' + (r.matched_district||'—') + '</td>'
+      + '<td>' + drMethodChip(r.match_method) + '</td>'
+      + '<td style="font-size:11px;color:#856404;max-width:260px">' + drReasonLabel(r.ambiguity_reason) + '</td></tr>';
+  }).join('');
+
+  document.getElementById('dr-s1').innerHTML = [
+    '<div class="dr-section">',
+    '<div class="dr-section-title">Section 1 — ONA Mock-Drill ↔ Registry (Stock-in-Hand) Matching',
+    '<span class="dr-badge dr-badge-g">' + matched.length + ' matched</span>',
+    misses.length ? '<span class="dr-badge dr-badge-r">' + misses.length + ' unmatched</span>' : '',
+    '<span class="dr-badge dr-badge-a">' + ambiguous.length + ' ambiguous</span>',
+    '</div>',
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
+    'The mapping Excel (<em>ONA_Stock_in_Hand_Matching</em>) links each ONA facility code to a registry entry using District + Hospital + Capacity + Manufacturer. ',
+    'Match methods: <b>QR</b> = direct QR code match (most precise); <b>DHC</b> = District+Hospital+Capacity; <b>F1–F4</b> = fallback heuristics. ',
+    'Ambiguous codes (⚠) have been <b>excluded from complaint analysis</b> to ensure data accuracy.',
+    '</div>',
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">',
+    drStat(withQR.length, 'Matched via QR', 'Direct QR code in mapping', ''),
+    drStat(withDHC.length, 'Matched via DHC', 'District+Hospital+Capacity', ''),
+    drStat(withFB.length, 'Matched via Fallback', 'F1-F4 heuristic rules', ''),
+    drStat(misses.length, 'Not Matched', 'No registry entry found', ''),
+    '</div>',
+
+    '<div class="dr-section dr-collapsible" onclick="drToggle(this)" style="cursor:pointer;background:var(--bg);border-color:#1a7f43">',
+    '<div class="dr-section-title" style="color:#1a7f43">✓ Matched Plants (' + matched.length + ') — click to expand</div>',
+    '<div class="dr-collapsible-body"><div style="overflow-x:auto">',
+    '<table class="dr-table"><thead><tr><th>Code</th><th>ONA District</th><th>ONA Facility</th><th>ONA Cap (LPM)</th><th>Registry Hospital</th><th>Registry District</th><th>Registry Cap (LPM)</th><th>Method</th><th>Complaints</th></tr></thead>',
+    '<tbody>' + s1MatchedRows + '</tbody></table></div></div></div>',
+
+    misses.length ? [
+      '<div class="dr-section dr-collapsible" onclick="drToggle(this)" style="cursor:pointer;background:var(--bg);border-color:#b91c1c">',
+      '<div class="dr-section-title" style="color:#b91c1c">✗ Not Matched — No Registry Entry Found (' + misses.length + ') — click to expand</div>',
+      '<div class="dr-collapsible-body"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">These mapping codes could not be resolved to any registry asset. The SIH entry in the mapping Excel does not match any record in the Stock-in-Hand registry. Action required: verify the SIH district, hospital name, and capacity in the mapping file.</div>',
+      '<div style="overflow-x:auto"><table class="dr-table"><thead><tr><th>Code</th><th>ONA District</th><th>ONA Facility</th><th>SIH District (tried)</th><th>SIH Facility (tried)</th><th>SIH Capacity</th><th>Status</th><th>Reason</th></tr></thead>',
+      '<tbody>' + s1MissRows + '</tbody></table></div></div></div>',
+    ].join('') : '',
+
+    '<div class="dr-section dr-collapsible" onclick="drToggle(this)" style="cursor:pointer;background:var(--bg);border-color:#856404">',
+    '<div class="dr-section-title" style="color:#856404">⚠ Ambiguous Mapping — Excluded from Complaint Analysis (' + ambiguous.length + ') — click to expand</div>',
+    '<div class="dr-collapsible-body"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">These codes matched a registry asset but the mapping is not sufficiently precise to reliably link complaint data. Complaint records for these plants are excluded from all cross-source analysis to prevent mis-attribution. Fix: add the specific <b>SIH QR Code</b> column in the mapping Excel for these entries.</div>',
+    '<div style="overflow-x:auto"><table class="dr-table"><thead><tr><th>Code</th><th>ONA District</th><th>ONA Facility</th><th>Matched Hospital</th><th>District</th><th>Method</th><th>Ambiguity Reason</th></tr></thead>',
+    '<tbody>' + s1AmbigRows + '</tbody></table></div></div></div>',
+    '</div>',
+  ].join('');
+
+  /* ── SECTION 2: ONA ↔ Complaints ── */
+  const cleanWithComp = RAW.slim_plants.filter(function(p){ return p.cln && (p.cl||[]).length > 0; });
+  const cleanNoComp   = RAW.slim_plants.filter(function(p){ return p.cln && (p.cl||[]).length === 0; });
+  const ambigPs       = RAW.slim_plants.filter(function(p){ return !p.cln; });
+
+  document.getElementById('dr-s2').innerHTML = [
+    '<div class="dr-section">',
+    '<div class="dr-section-title">Section 2 — ONA Mock-Drill ↔ Complaints Matching</div>',
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
+    'Complaints are linked to ONA plants via the QR code on each registry asset (a unique physical identifier). ',
+    'Only plants with a <b>verified-clean</b> ONA→Registry mapping are included in complaint analysis. ',
+    'Plants with ambiguous mapping are shown separately — their complaint data cannot be reliably attributed.',
+    '</div>',
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">',
+    drStat(clean.length, 'Verified-Clean Plants', 'Unambiguous ONA↔Registry link', ''),
+    drStat(cleanWithComp.length, 'Clean — With Complaints', 'Have ≥1 complaint record', clean.length ? Math.round(cleanWithComp.length/clean.length*100)+'%' : ''),
+    drStat(cleanNoComp.length, 'Clean — No Complaints', 'Legitimately 0 complaints', ''),
+    drStat(ambigPs.length, 'Excluded (Ambiguous)', 'Complaint data not attributed', ''),
+    '</div>',
+    '<div style="font-size:12px;padding:10px 14px;background:#fff3cd;border-radius:6px;border:1px solid #ffc107;color:#856404">',
+    '<b>Transparency note:</b> ' + ambigPs.length + ' plants are excluded from complaint cross-analysis because their mapping between ONA and the complaints registry is ambiguous (multiple PSA plants at the same hospital share the same District+Hospital+Capacity lookup key). These plants are still shown in ONA drill analysis — only the complaint linkage is suspended. To restore them: add the specific <b>SIH QR Code</b> for each ambiguous entry in the mapping Excel, then re-run Refresh Data.',
+    '</div>',
+    '</div>',
+  ].join('');
+
+  /* ── SECTION 3: EU × Registry × Complaints ── */
+  const euDHCAmbig = ambiguous.length; // same DHC ambiguity affects EU drill precision
+  document.getElementById('dr-s3').innerHTML = [
+    '<div class="dr-section">',
+    '<div class="dr-section-title">Section 3 — e-Upkaran Mock-Drill ↔ Registry ↔ Complaints Matching</div>',
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
+    'The e-Upkaran × Complaints page uses a <b>direct cross-reference</b> from the registry — no ONA mapping is involved. ',
+    'EU drills are matched to registry assets by District+Hospital+Capacity. Complaints are matched by QR code (precise). ',
+    'This page is not affected by ONA mapping ambiguities for complaint accuracy.',
+    '</div>',
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">',
+    drStat(euAllCt, 'Total EU Plants (all)', 'Unique identities in e-Upkaran data', ''),
+    drStat(euWithDrill, 'Registry Assets with EU Drill', 'Matched by District+Hospital+Capacity', regTotal ? Math.round(euWithDrill/regTotal*100)+'%' : ''),
+    drStat(euWithComp, 'Registry Assets with Complaints', 'QR-matched — fully accurate', regTotal ? Math.round(euWithComp/regTotal*100)+'%' : ''),
+    drStat(euBoth, 'Both EU Drill + Complaint', 'Cross-source verified plants', ''),
+    drStat(EU_CROSS.length - euWithDrill - euWithComp + euBoth, 'Registry Only — No Drill or Complaint', 'No field data recorded', ''),
+    drStat(euDHCAmbig, 'EU Drill Precision — DHC Ambiguous', 'EU drills may be shared across twin plants at same hospital', ''),
+    '</div>',
+    '<div style="font-size:12px;padding:10px 14px;background:#dbeafe;border-radius:6px;border:1px solid #93c5fd;color:#1d4ed8">',
+    '<b>Note on EU drill precision:</b> For hospitals with multiple PSA plants sharing the same District+Hospital+Capacity key (' + euDHCAmbig + ' plants), EU drill data from one machine may appear on both plants in the cross-reference view. Complaint data is always correct (matched by unique QR code). To fix EU drill precision: ensure e-Upkaran data includes the plant QR code.',
+    '</div>',
+    '</div>',
+  ].join('');
+
+  /* ── SECTION 4: Registry Overview ── */
+  const regVerified = REGISTRY_ALL.filter(function(r){ return r.is_verified === 'true'; }).length;
+  document.getElementById('dr-s4').innerHTML = [
+    '<div class="dr-section">',
+    '<div class="dr-section-title">Section 4 — Registry (Stock-in-Hand) Overview</div>',
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
+    'The registry is the authoritative source of all PSA plant identities in Rajasthan. All matching (ONA, EU, Complaints) resolves against this registry.',
+    '</div>',
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">',
+    drStat(regTotal, 'Total Registry Plants', 'All PSA plant entries in Stock-in-Hand report', ''),
+    drStat(regWithQR, 'Plants with QR Code', 'Can be uniquely identified in complaints data', regTotal ? Math.round(regWithQR/regTotal*100)+'%' : ''),
+    drStat(regVerified, 'Verified Inventory', 'Inventory status = Verified', regTotal ? Math.round(regVerified/regTotal*100)+'%' : ''),
+    drStat(regTotal - regWithQR, 'Plants Without QR', 'Cannot link to complaints data', ''),
+    '</div>',
+    '</div>',
+  ].join('');
+}
+
+function drStat(val, label, sub, pct) {
+  return '<div class="dr-stat"><div class="dr-stat-val">' + val + (pct ? '<span style="font-size:13px;color:var(--muted);margin-left:4px">' + pct + '</span>' : '') + '</div>'
+    + '<div class="dr-stat-label">' + label + '</div>'
+    + (sub ? '<div class="dr-stat-sub">' + sub + '</div>' : '')
+    + '</div>';
+}
+
+/* ─── Excel Export ─── */
+function exportDataReport() {
+  if (typeof XLSX === 'undefined') {
+    alert('Excel library not loaded. Please check your internet connection and try again.');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+
+  /* Sheet 1: Summary */
+  const regTotal = REGISTRY_ALL.length || EU_CROSS.length;
+  const regWithQR = REGISTRY_ALL.filter(function(r){ return r.has_qr === 'true' || r.has_qr === true; }).length;
+  const euWithDrill = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0; }).length;
+  const euWithComp  = EU_CROSS.filter(function(r){ return +r.complaint_count > 0; }).length;
+  const euBoth      = EU_CROSS.filter(function(r){ return +r.eu_drill_count > 0 && +r.complaint_count > 0; }).length;
+  const allMR = MAPPING_REPORT;
+  const matched  = allMR.filter(function(r){ return r.match_method !== 'MISS'; });
+  const misses   = allMR.filter(function(r){ return r.match_method === 'MISS'; });
+  const ambiguous = allMR.filter(function(r){ return !r.complaint_clean && r.match_method !== 'MISS'; });
+  const clean    = matched.filter(function(r){ return r.complaint_clean; });
+  const cleanWithComp = RAW.slim_plants.filter(function(p){ return p.cln && (p.cl||[]).length > 0; });
+  const cleanNoComp   = RAW.slim_plants.filter(function(p){ return p.cln && (p.cl||[]).length === 0; });
+
+  const summaryData = [
+    ['PSA Plant Dashboard — Data Transparency Report'],
+    ['Generated:', new Date().toLocaleString()],
+    ['Last data derive:', window._lastBuiltAt || '—'],
+    [],
+    ['METRIC', 'VALUE', 'NOTES'],
+    ['Total Registry Plants', regTotal, 'All PSA plant entries in Stock-in-Hand report'],
+    ['Registry Plants with QR Code', regWithQR, 'Can be uniquely identified in complaints'],
+    ['Total ONA Plants (all drills)', ONA_ALL_PLANTS.length, 'Unique plant identities in ONA mock-drill data'],
+    ['ONA→Registry Matched', matched.length + '/' + allMR.length, 'Mapping codes resolved to a registry asset'],
+    ['ONA Not Matched', misses.length, 'No registry entry found for SIH mapping entry'],
+    ['ONA Ambiguous — Excluded', ambiguous.length, 'Multiple plants share same location key'],
+    ['ONA Verified-Clean Complaint Link', clean.length, 'Unambiguous end-to-end ONA→Registry→Complaint chain'],
+    ['Clean Plants WITH Complaints', cleanWithComp.length, 'Of ' + clean.length + ' verified-clean plants'],
+    ['Clean Plants WITHOUT Complaints', cleanNoComp.length, 'Legitimately zero complaints on record'],
+    ['Total EU Plants (all drills)', EU_ALL_PLANTS.length, 'Unique plant identities in e-Upkaran data'],
+    ['Registry with EU Drill Data', euWithDrill, 'Matched by District+Hospital+Capacity'],
+    ['Registry with Complaints (QR)', euWithComp, 'QR-matched — fully accurate'],
+    ['Registry with BOTH EU + Complaint', euBoth, 'Cross-source verified plants'],
+    ['Total Complaint Records', COMPLAINTS_TOTAL, 'All complaint records in source data'],
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Summary');
+
+  /* Sheet 2: ONA Matched Plants */
+  const matchedData = [['Code','ONA District','ONA Facility','ONA Capacity (LPM)','ONA Manufacturer','SIH District','SIH Facility','SIH Capacity','SIH Manufacturer','Match Method','Matched Registry Hospital','Matched District','Matched Capacity','Complaint Clean','Ambiguity Reason']];
+  matched.forEach(function(r) {
+    matchedData.push([r.code, r.ona_district, r.ona_facility, r.ona_capacity, r.ona_manufacturer, r.sih_district, r.sih_facility, r.sih_capacity, r.sih_manufacturer, r.match_method, r.matched_hospital, r.matched_district, r.matched_capacity, r.complaint_clean ? 'Yes' : 'No', r.ambiguity_reason || '']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(matchedData), 'ONA_Matched');
+
+  /* Sheet 3: ONA Not Matched */
+  const missData = [['Code','ONA District','ONA Facility','SIH District (tried)','SIH Facility (tried)','SIH Capacity','Reason']];
+  misses.forEach(function(r) {
+    missData.push([r.code, r.ona_district, r.ona_facility, r.sih_district, r.sih_facility, r.sih_capacity, drReasonLabel(r.ambiguity_reason)]);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(missData), 'ONA_Not_Matched');
+
+  /* Sheet 4: ONA Ambiguous */
+  const ambigData = [['Code','ONA District','ONA Facility','ONA Capacity (LPM)','ONA Manufacturer','Matched Hospital','Matched District','Matched Capacity','Match Method','Ambiguity Reason','Action Required']];
+  ambiguous.forEach(function(r) {
+    ambigData.push([r.code, r.ona_district, r.ona_facility, r.ona_capacity, r.ona_manufacturer, r.matched_hospital, r.matched_district, r.matched_capacity, r.match_method, drReasonLabel(r.ambiguity_reason), 'Add SIH QR Code in mapping Excel for this entry']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ambigData), 'ONA_Ambiguous_Excluded');
+
+  /* Sheet 5: EU × Registry × Complaints */
+  const euData = [['District','Hospital','Capacity','QR Code','Has QR','EU Drill Count','Latest EU Status','Latest EU Date','Complaint Count','Has Active Complaint','Inventory Status','Is Verified']];
+  EU_CROSS.forEach(function(r) {
+    euData.push([r.district||'', r.hospital||'', r.capacity||'', r.qr_suffix||'', r.has_qr||'', r.eu_drill_count||0, r.eu_status||'', r.eu_date||'', r.complaint_count||0, r.has_active_complaint||'', r.inventory_status||'', r.is_verified||'']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(euData), 'EU_Registry_Complaints');
+
+  /* Sheet 6: Registry Overview */
+  const regData = [['District','Hospital','Capacity','QR Code','Has QR','Equipment Status','Inventory Status','MOIC Verified Date','Is Verified']];
+  REGISTRY_ALL.forEach(function(r) {
+    regData.push([r.district||'', r.hospital||'', r.capacity||'', r.qr_suffix||'', r.has_qr||'', r.equipment_status||'', r.inventory_status||'', r.moic_verified_date||'', r.is_verified||'']);
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(regData), 'Registry_Overview');
+
+  var dateStr = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, 'PSA_Data_Report_' + dateStr + '.xlsx');
+}
+
 function switchTab(i){
   document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle('active',i===j));
   document.querySelectorAll('.page').forEach((p,j)=>p.classList.toggle('active',i===j));
+  if (i === 4 && MAPPING_REPORT.length) rp4();
 }
 function goMeth(anchor){
   switchTab(3);
@@ -1724,8 +2086,10 @@ function rp1(){
   // Record counts for this filtered view
   const onaAllRecords = onaAll.reduce(function(s,p){ return s + (p.cnt||0); }, 0);
 
-  // ── CROSS-SOURCE data: only matched plants (ONA linked with Complaints) ─
-  const baseps = fp(RAW.slim_plants,'1').filter(function(p){ return p.os; });
+  // ── CROSS-SOURCE data: only plants with verified-clean ONA→complaint mapping ─
+  // Plants with ambiguous DHC bucket or QR conflict are excluded from complaint analysis.
+  // This set recalculates automatically on every derive as registry/mapping data changes.
+  const baseps = fp(RAW.slim_plants,'1').filter(function(p){ return p.os && p.cln; });
   const ps = baseps.map(function(p){ return withMetrics(p, fromD, toD); });
   const matchedN  = ps.length;
   const compRecords = ps.reduce(function(s,p){ return s + (p.cl||[]).length; }, 0);
@@ -1751,17 +2115,17 @@ function rp1(){
       'Mean purity across all functional ONA plants with a valid purity reading (>0%). WHO threshold = 93%.',
       onaAll.length+' plants · '+onaAllRecords+' records', 'm-purity'),
     // Cross-source KPIs — matched plants only
-    kc('Plants with ≥1 complaint', wc.length, pct(wc.length, matchedN)+'  of '+matchedN+' matched', '',
-      'Plants with at least one complaint in the selected date range. Limited to '+matchedN+' plants matched between ONA and complaints registry ('+COMPLAINTS_TOTAL+' total complaint records).',
-      matchedN+' matched plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
-    kc('Functional + open complaint', dfo.length, 'Discrepancy — '+matchedN+' plants · '+COMPLAINTS_TOTAL+' records', 'a',
-      'Functional (ONA) plants with an unresolved complaint. Based on '+matchedN+' registry-matched plants.',
+    kc('Plants with ≥1 complaint', wc.length, pct(wc.length, matchedN)+'  of '+matchedN+' verified-clean', '',
+      'Plants with at least one complaint in the selected date range. Limited to '+matchedN+' plants with verified-clean ONA↔registry mapping (ambiguous multi-plant hospitals excluded). '+COMPLAINTS_TOTAL+' total complaint records in source.',
+      matchedN+' verified-clean plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
+    kc('Functional + open complaint', dfo.length, 'Discrepancy — '+matchedN+' verified-clean plants', 'a',
+      'Functional (ONA) plants with an unresolved complaint. Based on '+matchedN+' plants with unambiguous ONA↔registry mapping.',
       'ONA latest drill · Complaints'+dateLabel, 'm-discrepancy'),
-    kc('Non-functional, no complaint', dnf.length, 'Gap — '+matchedN+' plants · '+COMPLAINTS_TOTAL+' records', 'r',
-      'Not-Functional (ONA) plants with zero complaints raised. Based on '+matchedN+' registry-matched plants.',
+    kc('Non-functional, no complaint', dnf.length, 'Gap — '+matchedN+' verified-clean plants', 'r',
+      'Not-Functional (ONA) plants with zero complaints raised. Based on '+matchedN+' plants with unambiguous ONA↔registry mapping.',
       'ONA latest drill · Complaints'+dateLabel, 'm-discrepancy'),
-    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN+' plants · '+COMPLAINTS_TOTAL+' records', '',
-      'Mean raise→MOIC resolution days for resolved complaints. Based on '+matchedN+' registry-matched plants.',
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN+' verified-clean plants', '',
+      'Mean raise→MOIC resolution days for resolved complaints. Based on '+matchedN+' plants with unambiguous ONA↔registry mapping.',
       'Resolved complaints'+dateLabel, 'm-resolution'),
   ].join('');
 
@@ -1774,9 +2138,9 @@ function rp1(){
   setPeriod('p1a-period', onaAll.length+' plants · '+onaAllRecords+' records · '+onaFixed);
   // ONA timeline now uses full ONA data (tlApply uses ONA_MONTHLY_ALL)
   tlApplyAllONA(selDistStr, fromD, toD);
-  setPeriod('p1b-period', `${matchedN} matched plants · ${COMPLAINTS_TOTAL} complaint records · ${compPeriod}`);
+  setPeriod('p1b-period', `${matchedN} verified-clean plants · ${COMPLAINTS_TOTAL} complaint records · ${compPeriod}`);
   setPeriod('p1f-period', onaAll.length+' plants · '+onaAllRecords+' records · '+onaFixed);
-  setPeriod('p1disc-period', `${onaAll.length} ONA plants (${onaAllRecords} records) · ${matchedN} matched · ${COMPLAINTS_TOTAL} complaint records`);
+  setPeriod('p1disc-period', `${onaAll.length} ONA plants (${onaAllRecords} records) · ${matchedN} verified-clean for complaints · ${COMPLAINTS_TOTAL} complaint records`);
 
   // FC widget uses only matched plants (cross-source)
   fcDraw(selDistStr, fromD, toD, p1AllowedCodes);
@@ -5816,6 +6180,8 @@ if (document.readyState === 'loading') {
       Data as of <strong><span class="meth-ref-date">17 Apr 2026</span></strong> · <span class="meth-plant-count">471</span> matched plants · Rajasthan.
     </div> </div> <!-- ─── SECTION: Data sources & matching ─────────────────────────────────── --> <div class="meth-section" id="m-matching"> <div class="meth-section-title">Data sources &amp; plant matching</div> <p>The dashboard links four independent data systems on a common plant identifier. A plant is considered <strong>matched</strong> only when it appears in all relevant registries without ambiguity.</p> <table class="meth-table"> <thead><tr><th>System</th><th>What it captures</th><th>Key field used</th></tr></thead> <tbody> <tr><td><strong>ONA</strong></td><td>Monthly mock-drill submissions by plant operators — functionality status + purity readings</td><td>Plant code → linked to registry</td></tr> <tr><td><strong>e-Upkaran</strong></td><td>Asset-level equipment status, QR Code scanning, purity at time of drill</td><td>QR / QR Code → Stock on Hand</td></tr> <tr><td><strong>Complaint management</strong></td><td>Complaint lifecycle: raised → attended → repaired → MOIC verified</td><td>Plant ID → timestamps per stage</td></tr> <tr><td><strong>Asset registry</strong></td><td>Master list of PSA plants with capacity (LPM), district, scheme, facility name</td><td>Canonical plant ID</td></tr> </tbody> </table> <div class="meth-note"> Plants that exist in only one or two systems are excluded from cross-dataset indicators to avoid false positives. The "<span class="meth-plant-count">471</span> matched plants" figure refers to plants present and linkable across all active datasets.</div> </div> <!-- ─── SECTION: ONA status ──────────────────────────────────────────────── --> <div class="meth-section" id="m-ona-status"> <div class="meth-section-title">ONA functional / non-functional status <span class="meth-tag">Page 1</span></div> <p>ONA collects one mock-drill submission per plant per reporting cycle. Each submission records a binary status: <strong>Functional</strong> or <strong>Not-Functional</strong>, along with up to three purity readings.</p> <div class="meth-formula">Latest status = status field of the drill record with the most recent submission timestamp for that plant</div> <table class="meth-table"> <thead><tr><th>Indicator</th><th>Definition</th></tr></thead> <tbody> <tr><td><strong>Total ONA plants</strong></td><td>Count of matched plants with ≥ 1 ONA drill record. No date filter applied.</td></tr> <tr><td><strong>Functional (ONA)</strong></td><td>Plants where latest drill status = <code>Functional</code>. One value per plant — the most recent submission wins.</td></tr> <tr><td><strong>Non-functional (ONA)</strong></td><td>Plants where latest drill status = <code>Not-Functional</code>. Same logic as above.</td></tr> </tbody> </table> <div class="meth-note">Date filters on Page 1 do <em>not</em> affect these status counts — they always reflect the latest drill regardless of when it was submitted. Date filters only affect complaint-derived indicators.</div> </div> <!-- ─── SECTION: EU status ───────────────────────────────────────────────── --> <div class="meth-section" id="m-eu-status"> <div class="meth-section-title">e-Upkaran equipment status <span class="meth-tag">Page 2</span></div> <p>e-Upkaran records one status per plant per drill event. The dashboard uses the latest drill record within any active date filter. Four statuses are possible:</p> <table class="meth-table"> <thead><tr><th>Status</th><th>Meaning</th><th>Dashboard grouping</th></tr></thead> <tbody> <tr><td><strong>Functional</strong></td><td>Plant operational and delivering oxygen at standard purity</td><td>Functional (green)</td></tr> <tr><td><strong>Functional Installed</strong></td><td>Physically installed, power on, but full commissioning pending</td><td>Functional (blue on P2, grouped as functional in bar chart)</td></tr> <tr><td><strong>In Complaint</strong></td><td>A complaint is active against this plant at time of drill</td><td>Non-functional (red)</td></tr> <tr><td><strong>Non Functional Repairable</strong></td><td>Plant is down but assessed as repairable</td><td>Non-functional (amber)</td></tr> </tbody> </table> <div class="meth-formula">Functional count = plants where latest EU drill status ∈ {Functional, Functional Installed}, filtered by district + EU drill date range + EU status filter</div> <div class="meth-note">The "Equipment status over time" chart collapses Functional + Functional Installed into one green segment and In Complaint + NF Repairable into one red segment for visual clarity.</div> </div> <!-- ─── SECTION: Purity ──────────────────────────────────────────────────── --> <div class="meth-section" id="m-purity"> <div class="meth-section-title">Oxygen purity <span class="meth-tag">Pages 1 &amp; 2</span></div> <p>Purity is measured as the percentage of oxygen in the output gas. The WHO threshold for medical-grade oxygen is <strong>≥ 93%</strong>. A secondary alert threshold of 90% is also shown.</p> <table class="meth-table"> <thead><tr><th>Indicator</th><th>Calculation</th></tr></thead> <tbody> <tr><td><strong>Avg purity — functional plants (ONA)</strong></td><td>Mean of per-plant purity values, where each plant's value = average of up to 3 readings in its latest drill. Plants reporting purity = 0 are excluded. Only Functional-status plants included.</td></tr> <tr><td><strong>Purity ≥ 93% (EU)</strong></td><td>Count of plants where the latest e-Upkaran drill purity reading ≥ 93%. Plants with purity = 0 are excluded from this count.</td></tr> <tr><td><strong>Purity = 0 (not running)</strong></td><td>Plants whose latest EU drill recorded purity = 0, indicating the plant was not operational at the time of measurement. These are excluded from all purity averages.</td></tr> </tbody> </table> <div class="meth-formula">Plant purity (ONA) = mean(reading₁, reading₂, reading₃) from latest drill, where readings &gt; 0 and ≤ 100%</div> <div class="meth-formula">Overall avg purity = Σ(plant_purity × 1) ÷ count(plants with valid purity)</div> <div class="meth-note">Outlier readings above 100% (sensor errors) are clamped to 100% before averaging. Readings of exactly 0 are treated as "not operational" and excluded.</div> </div> <!-- ─── SECTION: Complaints ──────────────────────────────────────────────── --> <div class="meth-section" id="m-complaints"> <div class="meth-section-title">Complaint counts <span class="meth-tag">Pages 1 &amp; 2</span></div> <p>Complaints are raised by plant operators or facility staff when a plant is non-functional or has a known fault. The complaint date filter on each page restricts which complaints are counted.</p> <table class="meth-table"> <thead><tr><th>Indicator</th><th>Definition</th></tr></thead> <tbody> <tr><td><strong>Plants with ≥1 complaint</strong></td><td>Count of plants that have at least one complaint with a raise date within the selected date range.</td></tr> <tr><td><strong>Active complaint</strong></td><td>Plants where at least one complaint within the date range has status ≠ <code>Resolved</code> at the time of the data extract.</td></tr> </tbody> </table> <div class="meth-formula">has_active_complaint = any(complaint.status ≠ "Resolved") for complaints with raise_date within filter range</div> <div class="meth-note">A complaint is considered "active" based on its status at the time of data extraction (<span class="meth-ref-date">17 Apr 2026</span>), not at the time it was raised. Applying a narrow date range therefore shows complaints raised in that window that are still unresolved today.</div> </div> <!-- ─── SECTION: Resolution time ─────────────────────────────────────────── --> <div class="meth-section" id="m-resolution"> <div class="meth-section-title">Complaint resolution time <span class="meth-tag">Pages 1 &amp; 2</span></div> <p>Resolution time measures how long it takes to fully close a complaint from the moment it is raised to MOIC sign-off. Only resolved complaints with a valid MOIC close date are included.</p> <div class="meth-formula">Total resolution time (days) = MOIC_close_date − complaint_raise_date</div> <table class="meth-table"> <thead><tr><th>Stage</th><th>Measured as</th></tr></thead> <tbody> <tr><td><strong>Response time</strong></td><td>Date technician first attended − raise date</td></tr> <tr><td><strong>Repair time</strong></td><td>Repair close date − technician attend date</td></tr> <tr><td><strong>Verification time</strong></td><td>MOIC sign-off date − repair close date</td></tr> <tr><td><strong>Total resolution</strong></td><td>MOIC sign-off date − raise date (sum of all stages)</td></tr> </tbody> </table> <div class="meth-formula">Avg resolution time = mean(total_resolution_days) across resolved complaints within filter range</div> <div class="meth-note">Complaints missing any stage timestamp are still included in the total resolution average if they have a valid MOIC close date. Stage-level averages exclude complaints where that specific stage timestamp is missing.</div> </div> <!-- ─── SECTION: Discrepancy flags ───────────────────────────────────────── --> <div class="meth-section" id="m-discrepancy"> <div class="meth-section-title">Discrepancy flags <span class="meth-tag">Pages 1 &amp; 2</span></div> <p>Discrepancies highlight plants where the self-reported functional status in ONA or e-Upkaran conflicts with the complaint record. These are key flags for field follow-up.</p> <table class="meth-table"> <thead><tr><th>Flag</th><th>Condition</th><th>Interpretation</th></tr></thead> <tbody> <tr><td><strong>Functional + open complaint</strong></td><td>Latest ONA/EU status = Functional AND ≥1 active complaint in date range</td><td>Plant self-reported as working but has an unresolved complaint — field data may be inaccurate or complaint not yet actioned</td></tr> <tr><td><strong>Non-functional, no complaint</strong></td><td>Latest ONA status = Not-Functional AND 0 complaints in date range</td><td>Plant self-reported as broken but no complaint has been raised — breakdown not escalated through formal channel</td></tr> <tr><td><strong>ONA vs EU status mismatch</strong> (Page 2 table)</td><td>ONA status ≠ EU status for the same plant, excluding Functional Installed</td><td>Two independent data collection systems disagree on whether the plant is working</td></tr> </tbody> </table> <div class="meth-note">Discrepancy counts are sensitive to the complaint date filter. Widening the date range will capture more historical complaints, potentially reducing the "no complaint" count.</div> </div> <!-- ─── SECTION: QR / QR Code coverage ───────────────────────────────────── --> <div class="meth-section" id="m-qr-coverage"> <div class="meth-section-title">QR code &amp; inventory verification <span class="meth-tag">Page 3</span></div> <p>For a plant to participate in e-Upkaran mock-drill reporting, it must have a valid QR code in the Stock on Hand register and must be MOIC-verified.</p> <table class="meth-table"> <thead><tr><th>Indicator</th><th>Source field</th><th>Definition</th></tr></thead> <tbody> <tr><td><strong>Has QR code</strong></td><td>Stock on Hand → QR code field</td><td>Plant has a non-null QR Code assigned in the asset register</td></tr> <tr><td><strong>No QR code</strong></td><td>Stock on Hand → QR code field</td><td>QR field is null or blank — plant cannot be scanned in e-Upkaran</td></tr> <tr><td><strong>Verified inventory</strong></td><td>Stock on Hand → Inventory Status</td><td>Status = <code>Verified Inventory</code> — MOIC has physically confirmed the asset exists and matches the register entry</td></tr> <tr><td><strong>Unverified</strong></td><td>Stock on Hand → Inventory Status</td><td>Status = <code>New Inventory</code> or <code>Added By Service Provider</code> — not yet confirmed by MOIC</td></tr> </tbody> </table> <div class="meth-formula">Verified % of QR plants = Verified inventory count ÷ Has QR count × 100</div> </div> <!-- ─── SECTION: Reporting coverage ──────────────────────────────────────── --> <div class="meth-section" id="m-reporting"> <div class="meth-section-title">Reporting coverage <span class="meth-tag">Page 3</span></div> <p>Reporting coverage measures what share of MOIC-verified plants are actively submitting mock-drill data to e-Upkaran. This is the headline coverage metric for the QR Code programme.</p> <div class="meth-formula">% verified plants reporting = Verified + reporting ÷ Total verified × 100</div> <table class="meth-table"> <thead><tr><th>Indicator</th><th>Definition</th></tr></thead> <tbody> <tr><td><strong>Verified + reporting</strong></td><td>Plants with Inventory Status = Verified AND at least one mock-drill record in e-Upkaran within the selected drill date range (default: last 90 days from <span class="meth-window-start">17 Jan 2026</span>)</td></tr> <tr><td><strong>Verified, not reporting</strong></td><td>Plants with Inventory Status = Verified but NO mock-drill record within the date range — the coverage gap</td></tr> <tr><td><strong>% verified plants reporting</strong></td><td>Headline coverage rate. Colour-coded: ≥60% green, 40–59% amber, &lt;40% red</td></tr> </tbody> </table> <div class="meth-note">The denominator is always <em>verified</em> plants, not all matched plants. Unverified plants are excluded because they cannot legitimately submit drills. The default 90-day window uses the data extract date (<span class="meth-ref-date">17 Apr 2026</span>) as the reference point.</div> </div> </div>
 </div>
+
+<div class="page" id="pg4"><div style="padding:20px 24px;max-width:1280px;margin:0 auto"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;flex-wrap:wrap;gap:12px"><div><div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Data Transparency Report</div><div id="dr-subtitle" style="font-size:12px;color:var(--muted)">Loading…</div></div><button class="dr-export-btn" onclick="exportDataReport()">⬇ Export to Excel</button></div><div id="dr-summary"></div><div id="dr-s1"></div><div id="dr-s2"></div><div id="dr-s3"></div><div id="dr-s4"></div></div></div>
 
 <!-- CHATBOX -->
 <button id="chat-fab" onclick="toggleChat()" title="Ask AI about this dashboard">

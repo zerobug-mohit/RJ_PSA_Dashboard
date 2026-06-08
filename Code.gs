@@ -297,9 +297,17 @@ function deriveDashboard() {
   const missesB   = [];
   var resolvedB = 0, totalB = 0;
 
+  // Codes where DHC bucket resolution was ambiguous (multiple plants, no unique manufacturer match).
+  // Complaint data for these codes is excluded from outputs — linkage cannot be verified.
+  // Recalculates automatically on every derive as registry/mapping data changes.
+  const ambiguousCodes = new Set();
+  const ambiguityReasons = {}; // code → 'DHC_MULTI' | 'QR_CONFLICT' | 'DHC_MULTI+QR_CONFLICT'
+  const codeMatchMethod  = {}; // code → 'QR' | 'DHC' | 'F1' | 'F2' | 'F3' | 'F4' | 'MISS'
+  const codeRawInfo      = {}; // code → {onaFac, onaDist, sihFac, sihDist, sihCap}
+
   // Resolve an asset from a bucket using manufacturer tiebreak.
-  // Logs a warning when the tie cannot be broken deterministically.
-  function resolveBucket_(bucket, sihMfr) {
+  // codeRef: if provided and resolution is ambiguous, the code is added to ambiguousCodes.
+  function resolveBucket_(bucket, sihMfr, codeRef) {
     if (!bucket || !bucket.length) return null;
     if (bucket.length === 1) return bucket[0];
     if (sihMfr) {
@@ -311,7 +319,11 @@ function deriveDashboard() {
         if (part.length === 1) return part[0];
       }
     }
-    // Ambiguous — log so data team can investigate and correct the mapping
+    // Ambiguous — log and mark code so its complaints are excluded
+    if (codeRef != null) {
+      ambiguousCodes.add(String(codeRef));
+      if (!ambiguityReasons[String(codeRef)]) ambiguityReasons[String(codeRef)] = 'DHC_MULTI';
+    }
     Logger.log('WARN resolveBucket_: ' + bucket.length + ' assets share the same DHC key, picking first. Caps: ' + bucket.map(function(a){return a.cap;}).join(',') + ' Suppliers: ' + bucket.map(function(a){return a.supplier||'?';}).join(','));
     return bucket[0];
   }
@@ -342,36 +354,59 @@ function deriveDashboard() {
     const onaCapRaw  = m['ONA Capacity']                 != null ? m['ONA Capacity']  : m['_col5'];
     const onaMfrRaw  = String(m['ONA Manufacturer']      || m['_col6'] || '').trim();
 
-    // SIH side: cols 7-10
-    const sihDistRaw = String(m['SIH District']          || m['_col7'] || '').trim();
-    const sihHospRaw = String(m['SIH Health Facility']   || m['_col8'] || '').trim();
+    // SIH side: cols 7-11 (col 11 = SIH QR Code — optional column for disambiguation)
+    const sihDistRaw = String(m['SIH District']          || m['_col7']  || '').trim();
+    const sihHospRaw = String(m['SIH Health Facility']   || m['_col8']  || '').trim();
     const sihCapRaw  = m['SIH Capacity']                 != null ? m['SIH Capacity']  : m['_col9'];
     const sihMfrRaw  = String(m['SIH Manufacturer']      || m['_col10'] || '').trim();
+    const sihQRRaw   = String(m['SIH QR Code']           || m['_col11'] || '').trim();
 
     // Use normDist (= normName∘districtDisplay) so "Jaipur1"/"Jaipur2" → "jaipur"
     const sihDist = normDist(sihDistRaw);
     const sihHosp = normName(sihHospRaw);
     const sihCap  = parseCap(sihCapRaw);
     const sihMfr  = normMfr(sihMfrRaw);
+    const sihQR   = qrSuffix(sihQRRaw);
+
+    // Store raw info for all codes (resolved or not) for the mapping_report tab
+    codeRawInfo[String(code)] = {
+      onaFac:  onaFacRaw,
+      onaDist: onaDistRaw,
+      onaCap:  onaCapRaw != null ? String(onaCapRaw) : '',
+      onaMfr:  onaMfrRaw,
+      sihFac:  sihHospRaw,
+      sihDist: sihDistRaw,
+      sihCap:  sihCapRaw != null ? String(sihCapRaw) : '',
+      sihMfr:  sihMfrRaw,
+    };
 
     var asset = null;
     var fallbackUsed = '';
+    var matchedViaQR = false;
 
-    // ── Primary: exact district + hospital + capacity ──
-    asset = resolveBucket_(byDHC[sihDist + '|' + sihHosp + '|' + sihCap], sihMfr);
+    // ── QR lookup: highest priority — exact match when SIH QR Code is provided ──
+    // Add "SIH QR Code" column (col 11) to the mapping Excel to resolve ambiguous cases.
+    if (sihQR && byQR[sihQR]) {
+      asset = byQR[sihQR];
+      matchedViaQR = true;
+      fallbackUsed = '';  // QR match is the primary — not a fallback
+    }
+
+    // ── DHC lookup: district + hospital + capacity (when QR not specified) ──
+    if (!asset) asset = resolveBucket_(byDHC[sihDist + '|' + sihHosp + '|' + sihCap], sihMfr, code);
 
     // ── F1: strip trailing district-suffix from hospital name, same capacity ──
     if (!asset) {
       var stripped = stripDistSuffix_(sihHosp, sihDist);
       if (stripped) {
-        asset = resolveBucket_(byDHC[sihDist + '|' + stripped + '|' + sihCap], sihMfr);
+        asset = resolveBucket_(byDHC[sihDist + '|' + stripped + '|' + sihCap], sihMfr, code);
         if (asset) fallbackUsed = 'F1:strip-hosp-suffix';
       }
     }
 
     // ── F2: original hospital, any capacity (handles capacity mismatch / null cap) ──
     if (!asset) {
-      asset = resolveBucket_(byDH[sihDist + '|' + sihHosp], sihMfr);
+      asset = resolveBucket_(byDH[sihDist + '|' + sihHosp], sihMfr, code);
       if (asset) fallbackUsed = 'F2:any-cap';
     }
 
@@ -379,7 +414,7 @@ function deriveDashboard() {
     if (!asset) {
       var stripped2 = stripped || stripDistSuffix_(sihHosp, sihDist);
       if (stripped2) {
-        asset = resolveBucket_(byDH[sihDist + '|' + stripped2], sihMfr);
+        asset = resolveBucket_(byDH[sihDist + '|' + stripped2], sihMfr, code);
         if (asset) fallbackUsed = 'F3:strip+any-cap';
       }
     }
@@ -391,10 +426,10 @@ function deriveDashboard() {
         var altDist = hospParts[hospParts.length - 1];
         if (altDist !== sihDist) {
           // Try with the alternative district and the full hospital name
-          asset = resolveBucket_(byDH[altDist + '|' + sihHosp], sihMfr);
+          asset = resolveBucket_(byDH[altDist + '|' + sihHosp], sihMfr, code);
           if (!asset) {
             // Also try stripping the alt-dist token from the hospital name
-            asset = resolveBucket_(byDH[altDist + '|' + hospParts.slice(0, -1).join(' ')], sihMfr);
+            asset = resolveBucket_(byDH[altDist + '|' + hospParts.slice(0, -1).join(' ')], sihMfr, code);
           }
           if (asset) fallbackUsed = 'F4:alt-dist(' + altDist + ')';
         }
@@ -403,6 +438,8 @@ function deriveDashboard() {
 
     if (asset) {
       resolvedB++;
+      var matchMethod = matchedViaQR ? 'QR' : (!fallbackUsed ? 'DHC' : fallbackUsed.split(':')[0].toUpperCase());
+      codeMatchMethod[String(code)] = matchMethod;
       if (fallbackUsed) Logger.log('Step B ' + fallbackUsed + ': code ' + code + ' → ' + asset.dd + ' / ' + asset.sf);
       codeMap[String(code)] = {
         asset:       asset,
@@ -417,6 +454,7 @@ function deriveDashboard() {
         dept:        String(m['Department'] || '').trim(),
       };
     } else {
+      codeMatchMethod[String(code)] = 'MISS';
       missesB.push({ code: code, key: sihDist + '|' + sihHosp + '|' + sihCap });
     }
   });
@@ -717,17 +755,26 @@ function deriveDashboard() {
   var matchedE = 0, totalE = 0;
   const missesE = [];
 
+  Logger.log('Step B ambiguous codes: ' + ambiguousCodes.size + ' — complaint data excluded for these (mapping resolves to multiple plants)');
+
   // Build reverse map: QR suffix → code (for complaint linkage in Step E)
+  // QR losers (two codes resolving to the same QR) are also added to ambiguousCodes.
   const assetToCode = {};
   Object.keys(codeMap).forEach(function(code) {
     const qr = codeMap[code].asset.eq;
     if (!qr) return;
     if (assetToCode[qr] && assetToCode[qr] !== code) {
-      Logger.log('WARN Step E: QR "' + qr + '" claimed by both code ' + code + ' and code ' + assetToCode[qr] + ' — complaint will go to ' + assetToCode[qr]);
+      // Both codes claim the same registry QR — neither can be trusted for complaints
+      [String(code), String(assetToCode[qr])].forEach(function(c) {
+        ambiguousCodes.add(c);
+        ambiguityReasons[c] = ambiguityReasons[c] === 'DHC_MULTI' ? 'DHC_MULTI+QR_CONFLICT' : 'QR_CONFLICT';
+      });
+      Logger.log('WARN Step E: QR "' + qr + '" claimed by both code ' + code + ' and code ' + assetToCode[qr] + ' — both marked ambiguous, complaints excluded');
     } else {
       assetToCode[qr] = code;
     }
   });
+  Logger.log('Step E: ' + ambiguousCodes.size + ' total ambiguous codes (DHC + QR conflicts) — complaint data excluded');
 
   allComps.forEach(function(c) {
     const qr = qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || ''));
@@ -740,6 +787,9 @@ function deriveDashboard() {
     // Find code that owns this asset via QR
     const ownerCode = assetToCode[qr];
     if (!ownerCode) return; // barcoded asset not in mapping — skip
+
+    // Exclude complaints for codes with ambiguous mapping — linkage cannot be verified
+    if (ambiguousCodes.has(ownerCode)) return;
 
     matchedE++;
     const raiseD  = fromExcel(c['Complaint Raise Date']     || c['_col6']  || '');
@@ -898,7 +948,8 @@ function deriveDashboard() {
     'ona_status','ona_scheme','ona_purity','ona_drill_date','ona_nf_reason','ona_functional_reason',
     'eu_status','eu_purity','eu_running_hours','eu_drill_date','eu_leakage','eu_fire_safety',
     'qr_suffix','equipment_status','inventory_status','moic_verified_date',
-    'has_qr','is_verified','reporting_ever','reporting_recent','days_since_drill','complaints',
+    'has_qr','is_verified','reporting_ever','reporting_recent','days_since_drill',
+    'complaint_clean','complaints',
   ];
 
   const plantRows = [];
@@ -958,6 +1009,7 @@ function deriveDashboard() {
       String(re),                                      // re
       String(rr),                                      // rr
       ds != null ? ds : '',                            // ds
+      String(!ambiguousCodes.has(code)),               // complaint_clean
       JSON.stringify(comps),                           // cl
     ]);
   });
@@ -1122,6 +1174,7 @@ function deriveDashboard() {
   writeTab_(dashSS, 'eu_direct_cross',    euDirectCrossHeaders,  euDirectCrossRows);
 
   const builtAt = new Date().toISOString();
+  var cleanComplaintCodes = Object.keys(codeMap).filter(function(c) { return !ambiguousCodes.has(c); }).length;
   writeMeta_(dashSS, {
     built_at:     builtAt,
     coverage_B:   resolvedB + '/' + totalB,
@@ -1132,7 +1185,45 @@ function deriveDashboard() {
     ona_all_plants:   onaAllPlantsRows.length,
     eu_drills:        euTimeline.length,
     misses_B:         missesB.length,
+    complaint_clean_plants:     cleanComplaintCodes,
+    complaint_ambiguous_plants: ambiguousCodes.size,
+    mapping_report_codes:       Object.keys(codeRawInfo).length,
   });
+
+  // BUILD mapping_report — one row per mapping code (resolved + unresolved)
+  const mappingReportHeaders = [
+    'code','ona_district','ona_facility','ona_capacity','ona_manufacturer',
+    'sih_district','sih_facility','sih_capacity','sih_manufacturer',
+    'match_method','matched_district','matched_hospital','matched_capacity',
+    'complaint_clean','ambiguity_reason',
+  ];
+  const mappingReportRows = Object.keys(codeRawInfo).sort(function(a,b){ return Number(a)-Number(b); }).map(function(code) {
+    var info   = codeRawInfo[code];
+    var method = codeMatchMethod[code] || 'MISS';
+    var cm     = codeMap[code];
+    var asset  = cm ? cm.asset : null;
+    var clean  = method !== 'MISS' && !ambiguousCodes.has(code);
+    var reason = ambiguityReasons[code] || (method === 'MISS' ? 'NO_REGISTRY_MATCH' : '');
+    return [
+      code,
+      info.onaDist,
+      info.onaFac,
+      info.onaCap,
+      info.onaMfr,
+      info.sihDist,
+      info.sihFac,
+      info.sihCap,
+      info.sihMfr,
+      method,
+      asset ? asset.dd : '',
+      asset ? asset.sf : '',
+      asset && asset.cap != null ? String(asset.cap) : '',
+      String(clean),
+      reason,
+    ];
+  });
+  writeTab_(dashSS, 'mapping_report', mappingReportHeaders, mappingReportRows);
+  Logger.log('Mapping report: ' + mappingReportRows.length + ' codes written');
 
   const elapsed = ((new Date() - t0) / 1000).toFixed(1);
   Logger.log('=== Derive complete in ' + elapsed + 's  built_at=' + builtAt + ' ===');
@@ -1333,4 +1424,114 @@ function removeTriggers() {
 // =====================================================================
 function runDerive() {
   deriveDashboard();
+}
+
+
+// =====================================================================
+// CONFLICT REPORT — run this to identify QR conflicts and ambiguous
+// mappings so you know exactly what to fix in the mapping Excel.
+// =====================================================================
+function runConflictReport() {
+  Logger.log('=== CONFLICT REPORT ===');
+
+  // ── Read registry ──────────────────────────────────────────────────
+  const regRows = readSheetAsObjects(CONFIG.registry, CONFIG.tabs.registry, 3);
+  const byQR_ = {}, byDHC_ = {}, byDH_ = {};
+  regRows.forEach(function(r) {
+    const dist = normDist(r['District Name'] || '');
+    const hosp = normName(r['Hospital Name'] || '');
+    const cap  = parseCap(r['Capacity of PSA Plant (in LPM)'] || '');
+    const qr   = qrSuffix(r['QR Code'] || '');
+    const asset = { dd: districtDisplay(r['District Name']||''), sf: String(r['Hospital Name']||'').trim(), cap, supplier: normMfr(r['Supplier']||''), eq: qr };
+    const dhcKey = dist+'|'+hosp+'|'+cap;
+    if (!byDHC_[dhcKey]) byDHC_[dhcKey] = []; byDHC_[dhcKey].push(asset);
+    if (!byDH_[dist+'|'+hosp]) byDH_[dist+'|'+hosp] = []; byDH_[dist+'|'+hosp].push(asset);
+    if (qr) { if (!byQR_[qr]) byQR_[qr] = asset; }
+  });
+
+  // ── Read mapping ───────────────────────────────────────────────────
+  const mapRows = readSheetAsObjects(CONFIG.mapping, CONFIG.tabs.mapping, 0);
+  const codeToQR = {};  // code → QR suffix it resolved to
+  const codeToInfo = {}; // code → {onaFac, onaDist, sihHosp, sihDist, sihCap}
+
+  mapRows.forEach(function(m) {
+    const code = m['Code'] != null ? m['Code'] : m['_col1'];
+    if (!code) return;
+    const onaFac     = String(m['ONA Health Facility'] || m['_col4'] || '').trim();
+    const onaDist    = String(m['ONA District']        || m['_col3'] || '').trim();
+    const sihDistRaw = String(m['SIH District']        || m['_col7'] || '').trim();
+    const sihHospRaw = String(m['SIH Health Facility'] || m['_col8'] || '').trim();
+    const sihCapRaw  = m['SIH Capacity'] != null ? m['SIH Capacity'] : m['_col9'];
+    const sihQRRaw   = String(m['SIH QR Code']         || m['_col11'] || '').trim();
+
+    const sihDist = normDist(sihDistRaw);
+    const sihHosp = normName(sihHospRaw);
+    const sihCap  = parseCap(sihCapRaw);
+    const sihMfr  = normMfr(String(m['SIH Manufacturer'] || m['_col10'] || ''));
+    const sihQR   = qrSuffix(sihQRRaw);
+
+    codeToInfo[code] = { onaFac, onaDist, sihHosp: sihHospRaw, sihDist: sihDistRaw, sihCap: sihCapRaw||'?', sihQR: sihQRRaw||'' };
+
+    // Resolve asset (same logic as Step B)
+    var asset = null;
+    if (sihQR && byQR_[sihQR]) { asset = byQR_[sihQR]; }
+    if (!asset) {
+      var bucket = byDHC_[sihDist+'|'+sihHosp+'|'+sihCap];
+      if (bucket && bucket.length) {
+        if (bucket.length === 1) { asset = bucket[0]; }
+        else {
+          var ex = bucket.filter(function(a){ return a.supplier === sihMfr; });
+          asset = ex.length ? ex[0] : bucket[0];
+        }
+      }
+    }
+    if (!asset) {
+      var dh = byDH_[sihDist+'|'+sihHosp];
+      if (dh && dh.length) asset = dh[0];
+    }
+    if (asset) codeToQR[code] = asset.eq || '(no QR)';
+  });
+
+  // ── Find QR conflicts (multiple codes → same QR) ───────────────────
+  const qrToConflictCodes = {};
+  Object.keys(codeToQR).forEach(function(code) {
+    const qr = codeToQR[code];
+    if (!qr || qr === '(no QR)') return;
+    if (!qrToConflictCodes[qr]) qrToConflictCodes[qr] = [];
+    qrToConflictCodes[qr].push(code);
+  });
+
+  var conflictCount = 0;
+  Object.keys(qrToConflictCodes).forEach(function(qr) {
+    const codes = qrToConflictCodes[qr];
+    if (codes.length < 2) return;
+    conflictCount++;
+    const asset = byQR_[qr] || {};
+    Logger.log('─────────────────────────────────────────');
+    Logger.log('CONFLICT QR: ' + qr + '  →  ' + (asset.dd||'?') + ' / ' + (asset.sf||'?') + '  ('+asset.cap+' LPM)');
+    codes.forEach(function(code) {
+      const info = codeToInfo[code] || {};
+      Logger.log('  Code ' + code + ': ONA facility = "' + info.onaFac + '" (' + info.onaDist + ')');
+      Logger.log('          SIH entry  = "' + info.sihHosp + '" (' + info.sihDist + ') ' + info.sihCap + ' LPM');
+      Logger.log('          SIH QR col = "' + (info.sihQR||'(empty — add QR here)') + '"');
+    });
+    Logger.log('  FIX: In the mapping Excel, add the correct QR code in column "SIH QR Code" for each code above.');
+    Logger.log('       OR delete duplicate rows if multiple codes refer to the same physical plant.');
+  });
+
+  // ── Ambiguous DHC buckets (same hospital+capacity → multiple plants) ──
+  Logger.log('=== AMBIGUOUS DHC BUCKETS (registry has multiple plants at same location+capacity) ===');
+  var ambigCount = 0;
+  Object.keys(byDHC_).forEach(function(key) {
+    var bucket = byDHC_[key];
+    if (bucket.length < 2) return;
+    ambigCount++;
+    var parts = key.split('|');
+    Logger.log('  ' + bucket[0].dd + ' / ' + bucket[0].sf + '  cap=' + parts[2] + '  (' + bucket.length + ' plants, QRs: ' + bucket.map(function(a){return a.eq||'?';}).join(', ') + ')');
+  });
+
+  Logger.log('=== SUMMARY ===');
+  Logger.log('QR conflicts: ' + conflictCount + '  (codes mapped to same physical plant)');
+  Logger.log('Ambiguous DHC buckets: ' + ambigCount + '  (registry entries sharing location+capacity)');
+  Logger.log('=== END REPORT ===');
 }
