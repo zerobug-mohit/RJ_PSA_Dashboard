@@ -20,15 +20,17 @@
 }
 body{font-family:'Trebuchet MS',Trebuchet,Arial,sans-serif;font-size:14px;color:var(--text);background:var(--bg);line-height:1.5}
 /* TOPBAR */
-.topbar{position:sticky;top:0;z-index:100;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:0;height:50px}
-.topbar-title{font-size:13px;font-weight:600;color:var(--muted);padding-right:16px;border-right:1px solid var(--border);margin-right:4px;white-space:nowrap}
-.tab{padding:0 16px;height:50px;display:flex;align-items:center;font-size:13px;font-weight:400;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s}
+.topbar{position:sticky;top:0;z-index:100;background:#fff;border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:0;height:50px}
+.topbar-title{font-size:13px;font-weight:600;color:var(--muted);padding-right:14px;border-right:1px solid var(--border);margin-right:4px;white-space:nowrap;flex-shrink:0}
+.tabstrip{display:flex;align-items:center;flex:1 1 auto;min-width:0;height:50px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.tabstrip::-webkit-scrollbar{display:none}
+.tab{padding:0 13px;height:50px;display:flex;align-items:center;font-size:13px;font-weight:400;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;flex-shrink:0;transition:color .15s}
 .tab:hover{color:var(--text)}
 .tab.active{color:var(--text);border-bottom-color:var(--text);font-weight:500}
-.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
-.refresh-btn{font-size:12px;color:var(--muted);padding:5px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:transparent}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-shrink:0;padding-left:12px}
+.refresh-btn{font-size:12px;color:var(--muted);padding:5px 10px;border:1px solid var(--border);border-radius:6px;cursor:pointer;background:transparent;white-space:nowrap;flex-shrink:0}
 .refresh-btn:hover{background:var(--bg)}
-.stamp{font-size:11px;color:var(--muted)}
+.stamp{font-size:11px;color:var(--muted);white-space:nowrap}
 /* PAGE */
 .page{display:none;padding:20px;max-width:1400px;margin:0 auto}
 .page.active{display:block}
@@ -625,7 +627,7 @@ input[type=date]:focus{outline:none;border-color:#aaa}
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
-<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tab active" onclick="switchTab(0)">User Guide</div> <div class="tab" onclick="switchTab(1)">ONA Mockdrill</div> <div class="tab" onclick="switchTab(2)">EU Mockdrill</div> <div class="tab" onclick="switchTab(3)">QR Code Coverage</div> <div class="tab" onclick="switchTab(4)">Complaints Status</div> <div class="tab" onclick="switchTab(5)">Data Report</div> <div class="tab" onclick="switchTab(6)">Methodology</div> <div class="topbar-right"> <span class="stamp">Data as of 17 Apr 2026 &nbsp;|&nbsp; 471 matched plants</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <span id="dash-ver" style="font-size:9px;color:var(--muted);opacity:0.6">v60e</span> <div style="position:relative">
+<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tabstrip"> <div class="tab active" onclick="switchTab(0)">User Guide</div> <div class="tab" onclick="switchTab(1)">ONA Mockdrill</div> <div class="tab" onclick="switchTab(2)">EU Mockdrill</div> <div class="tab" onclick="switchTab(3)">QR Code Coverage</div> <div class="tab" onclick="switchTab(4)">Complaints Status</div> <div class="tab" onclick="switchTab(5)">Data Report</div> <div class="tab" onclick="switchTab(6)">Methodology</div> </div> <div class="topbar-right"> <span class="stamp">Data as of 17 Apr 2026 &nbsp;|&nbsp; 471 matched plants</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <span id="dash-ver" style="font-size:9px;color:var(--muted);opacity:0.6">v60e</span> <div style="position:relative">
 <div id="psa-loading-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;font-family:inherit">
   <div style="text-align:center"><div style="font-size:17px;font-weight:600;color:#1a1a2e;margin-bottom:16px">Loading PSA Dashboard…</div><div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top-color:#1a1a2e;border-radius:50%;animation:psa-spin 0.8s linear infinite;margin:0 auto"></div></div></div>
 <style>@keyframes psa-spin{to{transform:rotate(360deg)}}</style>
@@ -1277,9 +1279,9 @@ async function loadDashboard() {
     if (stamEl) {
       const builtAt = metaObj.built_at;
       const dateStr = builtAt
-        ? new Date(builtAt).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+        ? new Date(builtAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' })
         : '—';
-      stamEl.textContent = 'Last refreshed: ' + dateStr + '  |  ' + RAW.slim_plants.length + ' plants';
+      stamEl.textContent = dateStr + ' · ' + RAW.slim_plants.length + ' plants';
     }
 
     initDashboard_();
