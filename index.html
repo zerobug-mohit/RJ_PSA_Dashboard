@@ -2992,7 +2992,7 @@ function rp2(){
   // ── KPIs — EU-only ─────────────────────────────────────────────────────────
   document.getElementById('k2').innerHTML=[
     kc('Total EU plants', euAll.length, euAll.length+' plants · '+euAllRecords+' drill records', '',
-      'Counts only plants that have submitted at least one e-Upkaran mock-drill — NOT every plant in the registry. Plants that never drilled do not appear here, so this is always ≤ the registry total. A unique plant is identified by the combination of QR code + District + Hospital + Capacity + Manufacturer (all assessed together) — two drills are the same plant only when every one of these matches.',
+      'Unique plants that performed one or more e-Upkaran mock-drills, identified by the combination of QR code + District + Hospital + Capacity + Manufacturer (all assessed together). This counts only plants present in the mock-drill data — not every plant in the registry — so a plant that never drilled does not appear here, and the figure is always ≤ the registry total.',
       euAll.length+' reporting plants · '+euAllRecords+' drill records'),
     kc('Functional', euFunc.length, pct(euFunc.length, euAll.length)+' of '+euAll.length+' plants', 'g',
       'Plants where latest e-Upkaran status = Functional. From ALL '+euAll.length+' EU plants ('+euAllRecords+' records).',
