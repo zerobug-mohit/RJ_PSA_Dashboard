@@ -3307,7 +3307,6 @@ function _euIntelRenderDetail(body, ps) {
       + '<td>' + leakBadge + '</td>'
       + '<td>' + fireBadge + '</td>'
       + '<td>' + ageTxt + '</td>'
-      + '<td style="font-size:11px;text-align:center">' + (p.ct||0) + '</td>'
       + '</tr>';
   }).join('');
 
@@ -3318,9 +3317,9 @@ function _euIntelRenderDetail(body, ps) {
     + '<table class="tbl"><thead><tr>'
     + '<th>District</th><th>Facility</th><th>LPM</th><th>EU Status</th>'
     + '<th>EU Purity</th><th>Running Hrs</th><th>Leakage</th>'
-    + '<th>Fire Safety</th><th>Last Drill</th><th>Complaints</th>'
+    + '<th>Fire Safety</th><th>Last Drill</th>'
     + '</tr></thead><tbody>'
-    + (rows || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
+    + (rows || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
     + '</tbody></table></div>';
 }
 /* ===================== END EU INTELLIGENCE WIDGET ===================== */
