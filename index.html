@@ -627,7 +627,7 @@ input[type=date]:focus{outline:none;border-color:#aaa}
 </style>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
-<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tabstrip"> <div class="tab active" onclick="switchTab(0)">User Guide</div> <div class="tab" onclick="switchTab(1)">ONA Mockdrill</div> <div class="tab" onclick="switchTab(2)">EU Mockdrill</div> <div class="tab" onclick="switchTab(3)">QR Code Coverage</div> <div class="tab" onclick="switchTab(4)">Complaints Status</div> <div class="tab" onclick="switchTab(5)">Data Report</div> <div class="tab" onclick="switchTab(6)">Methodology</div> </div> <div class="topbar-right"> <span class="stamp">Last refreshed: —</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <span id="dash-ver" style="font-size:9px;color:var(--muted);opacity:0.6">v60e</span> <div style="position:relative">
+<body> <div class="topbar"> <span class="topbar-title">PSA Plant Dashboard &mdash; Rajasthan</span> <div class="tabstrip"> <div class="tab active" onclick="switchTab(0)">User Guide</div> <div class="tab" onclick="switchTab(1)">ONA Mockdrill</div> <div class="tab" onclick="switchTab(2)">EU Mockdrill</div> <div class="tab" onclick="switchTab(3)">Complaints Status</div> <div class="tab" onclick="switchTab(4)">QR Code Coverage</div> <div class="tab" onclick="switchTab(5)">Data Report</div> <div class="tab" onclick="switchTab(6)">Methodology</div> </div> <div class="topbar-right"> <span class="stamp">Last refreshed: —</span> <button class="refresh-btn" onclick="refreshDashboard()" id="psa-refresh-btn">↺ Refresh data</button> <span id="dash-ver" style="font-size:9px;color:var(--muted);opacity:0.6">v60e</span> <div style="position:relative">
 <div id="psa-loading-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;font-family:inherit">
   <div style="text-align:center"><div style="font-size:17px;font-weight:600;color:#1a1a2e;margin-bottom:16px">Loading PSA Dashboard…</div><div style="width:40px;height:40px;border:4px solid #e0e0e0;border-top-color:#1a1a2e;border-radius:50%;animation:psa-spin 0.8s linear infinite;margin:0 auto"></div></div></div>
 <style>@keyframes psa-spin{to{transform:rotate(360deg)}}</style>
@@ -691,7 +691,19 @@ input[type=date]:focus{outline:none;border-color:#aaa}
     </div>
 
     <div class="card" style="margin-bottom:14px">
-      <div class="card-title">3 · QR Code Coverage</div>
+      <div class="card-title">3 · Complaints Status</div>
+      <div style="font-size:13px;color:var(--text);line-height:1.7;margin-top:8px">
+        The only tab that <strong>crosses two sources</strong> — it links plant functionality with the complaint record. Two inner sub-tabs keep the two cross-references clearly separate:
+        <ul style="margin:8px 0;padding-left:20px;color:var(--muted)">
+          <li><strong>ONA Mock-Drill × Complaints:</strong> for plants with a verified-clean ONA↔registry mapping, crosses the latest ONA status against complaint history (open complaints, resolution time, and gaps such as "broken but no complaint raised").</li>
+          <li><strong>e-Upkaran × Complaints:</strong> for plants present in EU drill data, crosses the latest EU equipment status against the complaint record.</li>
+        </ul>
+        <span style="color:var(--muted)">Source: ONA or EU mock-drills joined with complaint records. Ambiguous multi-plant locations are excluded from the ONA cross.</span>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title">4 · QR Code Coverage</div>
       <div style="font-size:13px;color:var(--text);line-height:1.7;margin-top:8px">
         How far each plant has progressed through the e-Upkaran <strong>QR / verification programme</strong>, from registry entry to active reporting.
         <ul style="margin:8px 0;padding-left:20px;color:var(--muted)">
@@ -700,18 +712,6 @@ input[type=date]:focus{outline:none;border-color:#aaa}
           <li><strong>Priority action list:</strong> verified plants that have stopped reporting, sorted by longest silence.</li>
         </ul>
         <span style="color:var(--muted)">Source: asset registry + reporting status. No complaint data is mixed in.</span>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:14px">
-      <div class="card-title">4 · Complaints Status</div>
-      <div style="font-size:13px;color:var(--text);line-height:1.7;margin-top:8px">
-        The only tab that <strong>crosses two sources</strong> — it links plant functionality with the complaint record. Two inner sub-tabs keep the two cross-references clearly separate:
-        <ul style="margin:8px 0;padding-left:20px;color:var(--muted)">
-          <li><strong>ONA Mock-Drill × Complaints:</strong> for plants with a verified-clean ONA↔registry mapping, crosses the latest ONA status against complaint history (open complaints, resolution time, and gaps such as "broken but no complaint raised").</li>
-          <li><strong>e-Upkaran × Complaints:</strong> for plants present in EU drill data, crosses the latest EU equipment status against the complaint pipeline stage.</li>
-        </ul>
-        <span style="color:var(--muted)">Source: ONA or EU mock-drills joined with complaint records. Ambiguous multi-plant locations are excluded from the ONA cross.</span>
       </div>
     </div>
 
@@ -777,7 +777,7 @@ input[type=date]:focus{outline:none;border-color:#aaa}
       <button class="date-clear" onclick="clearAllFilters('pgC2')"> Clear all</button>
     </div>
     <div class="active-filter-bar" id="afbC2"></div>
-    <div class="krow krow-2" id="kC2"></div>
+    <div class="krow krow-4" id="kC2"></div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
         <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This crosses each plant's latest <strong>e-Upkaran equipment status</strong> with its complaint record. e-Upkaran drills, complaints, and the registry share the same identifiers, so no ONA mapping is needed.</p> <ul> <li>Each group is an EU status category (Functional, Functional Installed, In Complaint, NF Repairable).</li> <li>Within each, plants are split by whether they also carry an active complaint.</li> </ul> <p><strong>Drill down:</strong> <span class="sg-action">click any segment</span> to list the plants in that group. Click <span class="sg-action">← Overview</span> to return.</p> <div class="sg-tip"><strong>Key flag:</strong> plants marked "Functional" in e-Upkaran but with an active complaint may be self-reporting as operational while an issue sits unresolved.</div> </div> </details>
@@ -2163,7 +2163,7 @@ function exportDataReport() {
 }
 
 // Tab index → page element id (decoupled from DOM order)
-const TAB_PAGES = ['pgGuide','pg0','pg1','pg2','pgComp','pg4','pg3'];
+const TAB_PAGES = ['pgGuide','pg0','pg1','pgComp','pg2','pg4','pg3'];
 const METH_TAB_IDX = 6; // Methodology tab index
 function switchTab(i){
   const pid = TAB_PAGES[i];
@@ -3033,7 +3033,12 @@ function rpC(){
   // Only registry assets with ≥1 EU mockdrill record (excludes complaint-only assets).
   const euWithDrills = euCrossFiltered.filter(function(p){ return p.eu_drill_count > 0; });
   const matchedN2 = euWithDrills.length;
-  const act = euWithDrills.filter(function(p){ return p.ha; });
+  const euFuncSet = function(p){ return p.es==='Functional' || p.es==='Functional Installed'; };
+  const euNFSet   = function(p){ return p.es==='In Complaint' || p.es==='Non Functional Repairable'; };
+  // Same four cross-source KPIs as the ONA sub-tab, computed from EU data
+  const wc2  = euWithDrills.filter(function(p){ return p.ct > 0; });
+  const dfo2 = euWithDrills.filter(function(p){ return euFuncSet(p) && p.ha; });
+  const dnf2 = euWithDrills.filter(function(p){ return euNFSet(p) && p.ct === 0; });
   const rcomp2 = euWithDrills.filter(function(p){
     return p.cl && p.cl.some(function(c){ return c.st==='Resolved' && c.tr!=null; });
   });
@@ -3043,12 +3048,18 @@ function rpC(){
   }).filter(function(v){return v!=null;})) : null;
 
   document.getElementById('kC2').innerHTML=[
-    kc('Active complaint', act.length, pct(act.length,matchedN2)+'  of '+matchedN2+' plants', 'r',
-      'Plants with unresolved complaint. Uses all registry assets directly matched to EU drills and complaints — no ONA mapping required.',
-      matchedN2+' plants with data · '+COMPLAINTS_TOTAL+' total complaint records','m-complaints'),
-    kc('Avg resolution time', avgRes2?avgRes2+'d':'—', 'Resolved · '+matchedN2+' plants · '+COMPLAINTS_TOTAL+' records', '',
-      'Mean raise→MOIC resolution days across all registry assets with complaint data.',
-      matchedN2+' plants with data · '+COMPLAINTS_TOTAL+' total complaint records','m-resolution'),
+    kc('Plants with ≥1 complaint', wc2.length, pct(wc2.length, matchedN2)+'  of '+matchedN2+' EU plants', '',
+      'EU-drilled plants with at least one complaint on record. Uses registry assets directly matched to EU drills and complaints — no ONA mapping required. '+COMPLAINTS_TOTAL+' total complaint records in source.',
+      matchedN2+' EU-drilled plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
+    kc('Functional + open complaint', dfo2.length, 'Discrepancy — '+matchedN2+' EU plants', 'a',
+      'Plants whose latest EU status is Functional / Functional Installed yet have an unresolved complaint.',
+      matchedN2+' EU-drilled plants · Complaints', 'm-discrepancy'),
+    kc('Non-functional, no complaint', dnf2.length, 'Gap — '+matchedN2+' EU plants', 'r',
+      'Plants whose latest EU status is In Complaint / NF Repairable but have zero complaints raised.',
+      matchedN2+' EU-drilled plants · Complaints', 'm-discrepancy'),
+    kc('Avg resolution time', avgRes2?avgRes2+'d':'—', 'Resolved · '+matchedN2+' EU plants', '',
+      'Mean raise→MOIC resolution days across all EU-drilled registry assets with complaint data.',
+      matchedN2+' EU-drilled plants · '+COMPLAINTS_TOTAL+' complaint records','m-resolution'),
   ].join('');
 
   setPeriod('pC2-period', `${matchedN2} EU-drilled plants · ${COMPLAINTS_TOTAL} complaint records`);
