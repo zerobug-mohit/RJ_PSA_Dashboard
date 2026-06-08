@@ -1764,9 +1764,9 @@ function drCleanChip(clean) {
 
 function drReasonLabel(r) {
   if (!r) return '—';
-  if (r === 'DHC_MULTI') return 'Multiple plants share same District+Hospital+Capacity key';
-  if (r === 'QR_CONFLICT') return 'Two ONA codes resolve to the same registry QR code';
-  if (r === 'DHC_MULTI+QR_CONFLICT') return 'Both: ambiguous DHC bucket AND QR conflict';
+  if (r === 'DHC_MULTI') return 'Multiple registry assets share same District+Hospital+Capacity key';
+  if (r === 'DHC_COLLISION') return 'Multiple ONA codes resolve to assets at the same District+Hospital+Capacity';
+  if (r === 'DHC_MULTI+DHC_COLLISION') return 'Both: ambiguous DHC bucket AND location collision between codes';
   if (r === 'NO_REGISTRY_MATCH') return 'No matching registry asset found for this SIH entry';
   return r;
 }
@@ -1877,7 +1877,7 @@ function rp4() {
 
     '<div class="dr-section dr-collapsible" onclick="drToggle(this)" style="cursor:pointer;background:var(--bg);border-color:#856404">',
     '<div class="dr-section-title" style="color:#856404">⚠ Ambiguous Mapping — Excluded from Complaint Analysis (' + ambiguous.length + ') — click to expand</div>',
-    '<div class="dr-collapsible-body"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">These codes matched a registry asset but the mapping is not sufficiently precise to reliably link complaint data. Complaint records for these plants are excluded from all cross-source analysis to prevent mis-attribution. Fix: add the specific <b>SIH QR Code</b> column in the mapping Excel for these entries.</div>',
+    '<div class="dr-collapsible-body"><div style="font-size:12px;color:var(--muted);margin-bottom:8px">These codes matched a registry asset but multiple ONA codes resolve to the same District+Hospital+Capacity without a unique QR to distinguish them. Complaint records are excluded to prevent mis-attribution. Fix: add the specific <b>SIH QR Code</b> column in the mapping Excel for these entries so the tiebreaker can identify the correct plant.</div>',
     '<div style="overflow-x:auto"><table class="dr-table"><thead><tr><th>Code</th><th>ONA District</th><th>ONA Facility</th><th>Matched Hospital</th><th>District</th><th>Method</th><th>Ambiguity Reason</th></tr></thead>',
     '<tbody>' + s1AmbigRows + '</tbody></table></div></div></div>',
     '</div>',
@@ -1892,9 +1892,10 @@ function rp4() {
     '<div class="dr-section">',
     '<div class="dr-section-title">Section 2 — ONA Mock-Drill ↔ Complaints Matching</div>',
     '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
-    'Complaints are linked to ONA plants via the QR code on each registry asset (a unique physical identifier). ',
+    'Complaints are linked to ONA plants by <b>District + Hospital Name + Capacity</b> of the resolved registry asset. ',
+    'When multiple ONA codes resolve to assets at the same location+capacity, the plant\'s QR code is used as tiebreaker. ',
     'Only plants with a <b>verified-clean</b> ONA→Registry mapping are included in complaint analysis. ',
-    'Plants with ambiguous mapping are shown separately — their complaint data cannot be reliably attributed.',
+    'Plants where the location is shared by multiple codes with no unique QR to distinguish are excluded.',
     '</div>',
     '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">',
     drStat(clean.length, 'Verified-Clean Plants', 'Unambiguous ONA↔Registry link', ''),
@@ -1915,8 +1916,9 @@ function rp4() {
     '<div class="dr-section-title">Section 3 — e-Upkaran Mock-Drill ↔ Registry ↔ Complaints Matching</div>',
     '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">',
     'The e-Upkaran × Complaints page uses a <b>direct cross-reference</b> from the registry — no ONA mapping is involved. ',
-    'EU drills are matched to registry assets by District+Hospital+Capacity. Complaints are matched by QR code (precise). ',
-    'This page is not affected by ONA mapping ambiguities for complaint accuracy.',
+    'EU drills and complaints are both matched to registry assets by <b>District + Hospital Name + Capacity</b>. ',
+    'When a registry location has multiple PSA plants (duplicate DHC key), QR code is used as tiebreaker for both drills and complaints. ',
+    'This page is not affected by ONA mapping ambiguities.',
     '</div>',
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">',
     drStat(euAllCt, 'Total EU Plants (all)', 'Unique identities in e-Upkaran data', ''),
@@ -2012,7 +2014,7 @@ function exportDataReport() {
   /* Sheet 4: ONA Ambiguous */
   const ambigData = [['Code','ONA District','ONA Facility','ONA Capacity (LPM)','ONA Manufacturer','Matched Hospital','Matched District','Matched Capacity','Match Method','Ambiguity Reason','Action Required']];
   ambiguous.forEach(function(r) {
-    ambigData.push([r.code, r.ona_district, r.ona_facility, r.ona_capacity, r.ona_manufacturer, r.matched_hospital, r.matched_district, r.matched_capacity, r.match_method, drReasonLabel(r.ambiguity_reason), 'Add SIH QR Code in mapping Excel for this entry']);
+    ambigData.push([r.code, r.ona_district, r.ona_facility, r.ona_capacity, r.ona_manufacturer, r.matched_hospital, r.matched_district, r.matched_capacity, r.match_method, drReasonLabel(r.ambiguity_reason), 'Add SIH QR Code in mapping Excel to disambiguate this location']);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ambigData), 'ONA_Ambiguous_Excluded');
 

@@ -751,51 +751,95 @@ function deriveDashboard() {
   const allComps = readSheetAsObjects(CONFIG.complaints, CONFIG.tabs.complaints, 0);
   if (allComps.length) Logger.log('Complaints headers: ' + Object.keys(allComps[0]).filter(function(k){ return !k.startsWith('_col'); }).join(' | '));
 
+  // Pre-parse complaint rows: extract District, Hospital, Capacity, QR once.
+  // Reused for ONA complaint matching (Step E) and EU direct cross-reference.
+  const compParsed = allComps.map(function(c) {
+    return {
+      raw:  c,
+      dist: normDist(c['District Name']                   || c['_col1'] || ''),
+      hosp: normName(c['Hospital Name']                   || c['_col2'] || ''),
+      cap:  parseCap(c['Capacity of PSA Plant (in LPM)']  || c['_col3'] || ''),
+      qr:   qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || '')),
+    };
+  });
+  Logger.log('Complaints pre-parsed: ' + compParsed.filter(function(c){ return !!c.dist; }).length + ' rows with district');
+
   const complaintsByCode = {}; // code → [complaint]
   var matchedE = 0, totalE = 0;
   const missesE = [];
 
   Logger.log('Step B ambiguous codes: ' + ambiguousCodes.size + ' — complaint data excluded for these (mapping resolves to multiple plants)');
 
-  // Build reverse map: QR suffix → code (for complaint linkage in Step E)
-  // QR losers (two codes resolving to the same QR) are also added to ambiguousCodes.
-  const assetToCode = {};
+  // Build DHC-key → [codes] map for DHC-based complaint attribution.
+  // Complaints are matched to ONA codes by District+Hospital+Capacity of the resolved
+  // registry asset. When multiple codes share the same DHC key, QR is used as tiebreaker.
+  const codesByAssetDHC = {};
   Object.keys(codeMap).forEach(function(code) {
-    const qr = codeMap[code].asset.eq;
-    if (!qr) return;
-    if (assetToCode[qr] && assetToCode[qr] !== code) {
-      // Both codes claim the same registry QR — neither can be trusted for complaints
-      [String(code), String(assetToCode[qr])].forEach(function(c) {
-        ambiguousCodes.add(c);
-        ambiguityReasons[c] = ambiguityReasons[c] === 'DHC_MULTI' ? 'DHC_MULTI+QR_CONFLICT' : 'QR_CONFLICT';
-      });
-      Logger.log('WARN Step E: QR "' + qr + '" claimed by both code ' + code + ' and code ' + assetToCode[qr] + ' — both marked ambiguous, complaints excluded');
+    var asset = codeMap[code].asset;
+    var key = normName(asset.dd) + '|' + normName(asset.sf) + '|' + (asset.cap != null ? String(asset.cap) : '');
+    if (!codesByAssetDHC[key]) codesByAssetDHC[key] = [];
+    codesByAssetDHC[key].push(String(code));
+  });
+
+  // Detect DHC collisions — multiple codes resolving to the same registry location+capacity.
+  // If all colliding codes have distinct QR codes: complaints are tiebroken per-record (clean).
+  // If QRs are missing or shared: complaints cannot be attributed — mark all codes ambiguous.
+  Object.keys(codesByAssetDHC).forEach(function(key) {
+    var codes = codesByAssetDHC[key];
+    if (codes.length < 2) return;
+    var qrs = codes.map(function(c) { return codeMap[c].asset.eq || ''; });
+    var distinctQRs = new Set(qrs.filter(Boolean));
+    if (distinctQRs.size === codes.length) {
+      Logger.log('INFO DHC collision (QR-tiebreakable): ' + key + ' → codes ' + codes.join(',') + ' QRs=' + qrs.join(','));
     } else {
-      assetToCode[qr] = code;
+      codes.forEach(function(c) {
+        ambiguousCodes.add(c);
+        if (!ambiguityReasons[c]) ambiguityReasons[c] = 'DHC_COLLISION';
+        else if (ambiguityReasons[c].indexOf('DHC_COLLISION') === -1) ambiguityReasons[c] += '+DHC_COLLISION';
+      });
+      Logger.log('WARN DHC collision (ambiguous): ' + key + ' → codes ' + codes.join(',') + ' — complaints excluded');
     }
   });
-  Logger.log('Step E: ' + ambiguousCodes.size + ' total ambiguous codes (DHC + QR conflicts) — complaint data excluded');
+  Logger.log('Step E: ' + ambiguousCodes.size + ' total ambiguous codes — complaint data excluded');
 
-  allComps.forEach(function(c) {
-    const qr = qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || ''));
-    if (!qr) return;
+  compParsed.forEach(function(comp) {
+    if (!comp.dist && !comp.hosp) return;
     totalE++;
 
-    const asset = byQR[qr];
-    if (!asset) { missesE.push(qr); return; }
+    // Primary: District + Hospital + Capacity
+    var dhcKey = comp.dist + '|' + comp.hosp + '|' + (comp.cap != null ? String(comp.cap) : '');
+    var candidates = (codesByAssetDHC[dhcKey] || []).slice();
 
-    // Find code that owns this asset via QR
-    const ownerCode = assetToCode[qr];
-    if (!ownerCode) return; // barcoded asset not in mapping — skip
+    // Fallback: District + Hospital only (handles null or mismatched capacity)
+    if (!candidates.length && comp.hosp) {
+      Object.keys(codesByAssetDHC).forEach(function(k) {
+        var parts = k.split('|');
+        if (parts[0] !== comp.dist) return;
+        if (parts[1] === comp.hosp || parts[1].indexOf(comp.hosp) !== -1 || comp.hosp.indexOf(parts[1]) !== -1) {
+          codesByAssetDHC[k].forEach(function(c) { if (candidates.indexOf(c) === -1) candidates.push(c); });
+        }
+      });
+    }
 
-    // Exclude complaints for codes with ambiguous mapping — linkage cannot be verified
+    if (!candidates.length) { missesE.push(comp.dist + '|' + comp.hosp); return; }
+
+    var ownerCode = null;
+    if (candidates.length === 1) {
+      ownerCode = candidates[0];
+    } else if (comp.qr) {
+      var qrMatch = candidates.filter(function(c) { return codeMap[c] && codeMap[c].asset.eq === comp.qr; });
+      if (qrMatch.length === 1) ownerCode = qrMatch[0];
+    }
+
+    if (!ownerCode) return;
     if (ambiguousCodes.has(ownerCode)) return;
 
     matchedE++;
-    const raiseD  = fromExcel(c['Complaint Raise Date']     || c['_col6']  || '');
-    const attendD = fromExcel(c['Complaint Attend date']     || c['_col9']  || '');
-    const closeD  = fromExcel(c['Complaint Close date']      || c['_col10'] || '');
-    const moicD   = fromExcel(c['Complaint Close by MOIC']   || c['_col11'] || '');
+    var raw = comp.raw;
+    var raiseD  = fromExcel(raw['Complaint Raise Date']     || raw['_col6']  || '');
+    var attendD = fromExcel(raw['Complaint Attend date']     || raw['_col9']  || '');
+    var closeD  = fromExcel(raw['Complaint Close date']      || raw['_col10'] || '');
+    var moicD   = fromExcel(raw['Complaint Close by MOIC']   || raw['_col11'] || '');
 
     function daysDiff(a, b) { return (a && b) ? Math.round((b - a) / 86400000) : null; }
 
@@ -813,11 +857,11 @@ function deriveDashboard() {
       rp: daysDiff(attendD, closeD),
       vr: daysDiff(closeD,  moicD),
       tr: daysDiff(raiseD,  moicD),
-      dh: parseFloat(c['Total Downtime'] || c['_col12'] || '') || null,
+      dh: parseFloat(raw['Total Downtime'] || raw['_col12'] || '') || null,
     });
   });
-  Logger.log('Step E: ' + matchedE + '/' + totalE + ' complaints matched by QR (target 229/229)');
-  if (missesE.length) Logger.log('Step E unmatched QRs (' + missesE.length + '): ' + missesE.slice(0, 10).join(', '));
+  Logger.log('Step E: ' + matchedE + '/' + totalE + ' complaints matched by District+Hospital+Capacity');
+  if (missesE.length) Logger.log('Step E unmatched (' + missesE.length + '): ' + missesE.slice(0, 10).join(', '));
 
   // ------------------------------------------------------------------
   // DIRECT CROSS-REFERENCE: EU × Registry × Complaints
@@ -874,28 +918,36 @@ function deriveDashboard() {
     var sortedEU = euHits.filter(function(d){return d.date;}).sort(function(a,b){return a.date>b.date?-1:1;});
     var latestEU = sortedEU[0] || euHits[0];
 
-    // Match complaints to this registry asset (via QR code — same portal)
+    // Match complaints by District+Hospital+Capacity (same as EU drill matching).
+    // For registry assets sharing a DHC key (multiple plants at same location+capacity),
+    // QR is used as tiebreaker so each plant only receives its own complaints.
     var regComps = [];
-    if (qr) {
-      allComps.forEach(function(c) {
-        if (qrSuffix(String(c['Service Provider QR Code'] || c['_col4'] || '')) !== qr) return;
-        var raiseD  = fromExcel(c['Complaint Raise Date']   || c['_col6'] || '');
-        var attendD = fromExcel(c['Complaint Attend date']  || c['_col9'] || '');
-        var closeD  = fromExcel(c['Complaint Close date']   || c['_col10'] || '');
-        var moicD   = fromExcel(c['Complaint Close by MOIC']|| c['_col11'] || '');
-        var status;
-        if (moicD) status = 'Resolved';
-        else if (closeD) status = 'Pending MOIC Verification';
-        else if (attendD) status = 'Under Repair';
-        else status = 'Pending Attendance';
-        regComps.push({
-          rd: toISO(raiseD), st: status,
-          rs: daysDiff2(raiseD, attendD), rp: daysDiff2(attendD, closeD),
-          vr: daysDiff2(closeD, moicD),  tr: daysDiff2(raiseD, moicD),
-          dh: parseFloat(c['Total Downtime'] || c['_col12'] || '') || null,
-        });
+    var isDHCShared = (byDHC[regDist + '|' + regHosp + '|' + regCap] || []).length > 1;
+    compParsed.forEach(function(comp) {
+      if (!comp.dist) return;
+      if (comp.dist !== regDist) return;
+      if (comp.hosp !== regHosp) {
+        if (comp.hosp.indexOf(regHosp) === -1 && regHosp.indexOf(comp.hosp) === -1) return;
+      }
+      if (regCap && comp.cap && comp.cap !== regCap) return;
+      if (isDHCShared && qr && comp.qr && comp.qr !== qr) return;
+      var c = comp.raw;
+      var raiseD  = fromExcel(c['Complaint Raise Date']   || c['_col6'] || '');
+      var attendD = fromExcel(c['Complaint Attend date']  || c['_col9'] || '');
+      var closeD  = fromExcel(c['Complaint Close date']   || c['_col10'] || '');
+      var moicD   = fromExcel(c['Complaint Close by MOIC']|| c['_col11'] || '');
+      var status;
+      if (moicD) status = 'Resolved';
+      else if (closeD) status = 'Pending MOIC Verification';
+      else if (attendD) status = 'Under Repair';
+      else status = 'Pending Attendance';
+      regComps.push({
+        rd: toISO(raiseD), st: status,
+        rs: daysDiff2(raiseD, attendD), rp: daysDiff2(attendD, closeD),
+        vr: daysDiff2(closeD, moicD),  tr: daysDiff2(raiseD, moicD),
+        dh: parseFloat(c['Total Downtime'] || c['_col12'] || '') || null,
       });
-    }
+    });
 
     var hasActive = regComps.some(function(c){ return c.st !== 'Resolved'; });
     if (euHits.length > 0 || regComps.length > 0) euDirectMatched++;
