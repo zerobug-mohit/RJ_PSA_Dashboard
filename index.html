@@ -1237,25 +1237,30 @@ async function loadDashboard() {
     });
 
     /* --- Per-page district + plant lists (data-driven, one list per page) --- */
+    // The plant dropdown lists unique FACILITIES (district|facility); a facility may
+    // host several distinct plants, so we de-duplicate the dropdown options by value.
+    function dedupByVal_(arr){
+      var seen = {}; return arr.filter(function(o){ if(seen[o.val]) return false; seen[o.val]=1; return true; });
+    }
     // Page 1 (ONA): districts and plants from ONA_ALL_PLANTS.
     // Plant filter keyed by district|facility (dd|sf) — same identity space as the
     // per-plant monthly data — so it can drive KPIs, intelligence AND trend charts.
     DISTRICTS_BY_PAGE['1'] = [...new Set(ONA_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
-    PLANTS_BY_PAGE['1'] = ONA_ALL_PLANTS
+    PLANTS_BY_PAGE['1'] = dedupByVal_(ONA_ALL_PLANTS
       .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:(a.sf<b.sf?-1:1); })
-      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; });
+      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; }));
 
     // Page 2 (EU): districts and plants from EU_ALL_PLANTS
     DISTRICTS_BY_PAGE['2'] = [...new Set(EU_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
-    PLANTS_BY_PAGE['2'] = EU_ALL_PLANTS
+    PLANTS_BY_PAGE['2'] = dedupByVal_(EU_ALL_PLANTS
       .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:0; })
-      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; });
+      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; }));
 
     // Page 3 (Registry): districts and plants from REGISTRY_ALL
     DISTRICTS_BY_PAGE['3'] = [...new Set(REGISTRY_ALL.map(function(p){return p.dd;}).filter(Boolean))].sort();
-    PLANTS_BY_PAGE['3'] = REGISTRY_ALL
+    PLANTS_BY_PAGE['3'] = dedupByVal_(REGISTRY_ALL
       .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:0; })
-      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.cs, code:null }; });
+      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.cs, code:null }; }));
 
     // Keep backward-compat globals (used by fp() and msInitAll dept build)
     DISTRICTS_SORTED = [...new Set([...DISTRICTS_BY_PAGE['1'],...DISTRICTS_BY_PAGE['2'],...DISTRICTS_BY_PAGE['3']])].sort();
@@ -2987,8 +2992,8 @@ function rp2(){
   // ── KPIs — EU-only ─────────────────────────────────────────────────────────
   document.getElementById('k2').innerHTML=[
     kc('Total EU plants', euAll.length, euAll.length+' plants · '+euAllRecords+' drill records', '',
-      'Total unique PSA plant identities found in ALL e-Upkaran drill data (not limited to registry-matched plants).',
-      euAll.length+' plants · '+euAllRecords+' records — no registry match required'),
+      'Counts only plants that have submitted at least one e-Upkaran mock-drill — NOT every plant in the registry. Plants that never drilled do not appear here, so this is always ≤ the registry total. Each unique plant is identified by its QR code where available, otherwise by District + Hospital + Capacity + Manufacturer (falling back to District + Hospital + Capacity when manufacturer is missing).',
+      euAll.length+' reporting plants · '+euAllRecords+' drill records'),
     kc('Functional', euFunc.length, pct(euFunc.length, euAll.length)+' of '+euAll.length+' plants', 'g',
       'Plants where latest e-Upkaran status = Functional. From ALL '+euAll.length+' EU plants ('+euAllRecords+' records).',
       euAll.length+' plants · '+euAllRecords+' records'+euDateLabel,'m-eu-status'),

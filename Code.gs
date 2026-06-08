@@ -698,10 +698,21 @@ function deriveDashboard() {
   const unmatchedD = Object.keys(codeMap).filter(function(code) { return !euDrillsByCode[code]; });
   Logger.log('Step D: ' + matchedDIdents.size + ' identities matched | ' + unmatchedD.length + ' codes have no EU drill (reporting gap — expected)');
 
-  // BUILD eu_all_plants — ALL EU drills, one row per unique district+hospital+cap identity
+  // BUILD eu_all_plants — ALL EU drills, one row per unique plant.
+  // Plant identity uses a priority/fallback key so we don't undercount when the
+  // capacity field is blank or duplicated within a hospital:
+  //   1) QR code            — one tag per physical plant (definitive when present)
+  //   2) District+Hospital+Capacity+Manufacturer — fallback when QR is missing
+  //   3) District+Hospital+Capacity              — last resort when mfr also missing
+  // NOTE: e-Upkaran exports often mangle the QR (Excel scientific notation),
+  // so qrSuffix() returns '' and these rows correctly fall through to (2)/(3).
   const euAllByIdent = {};
   euParsed.forEach(function(d) {
-    const key = d.distNorm + '|' + d.hospNorm + '|' + (d.cap != null ? d.cap : '');
+    var capPart = (d.cap != null ? d.cap : '');
+    var key;
+    if (d.euQR)      key = 'Q|' + d.euQR;
+    else if (d.mfr)  key = 'M|' + d.distNorm + '|' + d.hospNorm + '|' + capPart + '|' + d.mfr;
+    else             key = 'D|' + d.distNorm + '|' + d.hospNorm + '|' + capPart;
     if (!euAllByIdent[key]) {
       euAllByIdent[key] = { drills: [], distDisplay: districtDisplay(d.distNorm), hosp: d.hospNorm, cap: d.cap };
     }
