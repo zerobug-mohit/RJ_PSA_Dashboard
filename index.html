@@ -4171,7 +4171,7 @@ function rp3(){
   ].join('');
 
   // Set period labels on all Page 3 charts
-  const stockPeriod = N+' assets · '+COMPLAINTS_TOTAL+' complaint records · Stock on Hand (17 Apr 2026)';
+  const stockPeriod = N+' assets · '+COMPLAINTS_TOTAL+' complaint records · Stock on Hand register';
   const drillPeriod3 = drillFrom||drillTo
     ? `${verified.length} verified plants · EU drill: ${drillFrom||'start'} → ${drillTo||'today'}`
     : `${verified.length} verified plants · EU drill: last 90 days`;
@@ -5612,7 +5612,7 @@ Date range applied: ${ctx.dateLabel}
 Dataset scope: ONA mock-drill data, all submissions Oct 2024 to Apr 2026
 
 === PLANT COUNTS ===
-Plants in current filter with ONA status: ${P.length} (out of 471 total matched plants)
+Plants in current filter with ONA status: ${P.length} (out of ${(RAW.slim_plants||[]).length} total matched plants)
 Functional (latest ONA drill): ${fn.length} (${pct(fn.length,P.length)})
 Not-Functional (latest ONA drill): ${nf.length} (${pct(nf.length,P.length)})
 Plants with no ONA status at all: ${RAW.slim_plants.filter(p=>!p.os).length}
@@ -5812,7 +5812,7 @@ Data source: e-Upkaran mobile scanning system
 Data as of: 17 April 2026
 
 === EU STATUS SUMMARY (in current filter) ===
-Total plants with EU status in filter: ${P.length} (out of 471)
+Total plants with EU status in filter: ${P.length} (out of ${(RAW.slim_plants||[]).length})
 Plants with NO e-Upkaran record at all: ${RAW.slim_plants.filter(p=>!p.es).length}
 Functional: ${P.filter(p=>p.es==='Functional').length} plants
 Functional Installed: ${euFI.length} plants (physically installed, transitional state)
@@ -6032,7 +6032,7 @@ ${distRates.slice(-5).reverse().map(([d,r,rep,norep])=>`${d}: ${r}% (${rep} of $
     const prompt = `=== FILTER CONTEXT ===
 District filter: ${ctx.distLabel}
 Plant filter: ${ctx.plantLabel}
-Reporting window: last 90 days (cutoff: 17 Apr 2026)
+Reporting window: last 90 days from the latest available drill date
 Population: verified plants (MOIC-confirmed inventory) that have NOT submitted any e-Upkaran drill in last 90 days
 
 === PRIORITY ACTION SUMMARY ===
@@ -6395,7 +6395,7 @@ if (document.readyState === 'loading') {
   <div id="chat-messages">
     <div class="msg assistant">Namaste! PSA plant dashboard ke baare mein koi bhi sawaal poochh sakte hain &mdash; functionality, purity, complaints, coverage, district-wise performance, ya kuch bhi. Main English, Hindi, ya Hinglish mein jawab de sakta hoon.</div>
   </div>
-  <div class="chat-hint">Data as of Apr 2026</div>
+  <div class="chat-hint">Live data — updates on every refresh</div>
   <div id="chat-input-row">
     <textarea id="chat-input" placeholder="Type your question..." rows="1"
       onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}"
