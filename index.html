@@ -1080,8 +1080,8 @@ async function loadDashboard() {
     /* --- TL (ONA per-plant timeline) --- */
     TL = { history: {} };
     rowsToObjects(onaTLVals).forEach(function(r) {
-      const c = String(r.code);
-      if (!TL.history[c]) TL.history[c] = { di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
+      const c = String(r.code);   // ONA still keyed by code (wired to uid in step 3)
+      if (!TL.history[c]) TL.history[c] = { uid: r.plant_uid || c, code: c, di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
       TL.history[c].h.push({
         d: normDate_(r.date),
         p: r.purity !== '' ? +r.purity : null,
@@ -1089,12 +1089,12 @@ async function loadDashboard() {
       });
     });
 
-    /* --- TL2 (EU per-plant timeline) --- */
+    /* --- TL2 (EU per-plant timeline) — keyed by canonical plant_uid --- */
     TL2 = { history: {} };
     rowsToObjects(euTLVals).forEach(function(r) {
-      const c = String(r.code);
-      if (!TL2.history[c]) TL2.history[c] = { di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
-      TL2.history[c].h.push({
+      const uid = r.plant_uid || String(r.code);   // fallback to code if uid column absent (pre-rederive)
+      if (!TL2.history[uid]) TL2.history[uid] = { uid: uid, code: String(r.code), di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
+      TL2.history[uid].h.push({
         d: normDate_(r.date),
         p: r.purity !== '' ? +r.purity : null,
         s: +r.status,
@@ -1105,6 +1105,7 @@ async function loadDashboard() {
     /* --- EU_ALL_PLANTS: all EU plant identities --- */
     EU_ALL_PLANTS = rowsToObjects(euAllVals).map(function(r) {
       return {
+        uid:  r.plant_uid || '',   // canonical EU plant identity (joins KPIs/timeline/purity/intel)
         dd:   r.district  || '',
         sf:   r.hospital  || '',
         co:   r.capacity  !== '' ? +r.capacity : null,
@@ -1126,8 +1127,9 @@ async function loadDashboard() {
     EU_MONTHLY_ALL = rowsToObjects(euMonthVals).map(function(r) {
       return {
         m:    r.month    || '',
+        uid:  r.plant_uid || '',   // canonical plant identity (exact per-plant trend filtering)
         dist: r.district || '',
-        fac:  r.facility || '',   // normalized hospital (per-plant aggregation)
+        fac:  r.facility || '',    // normalized hospital (display + backward-compat)
         tot:  +r.total   || 0,
         f:    +r.functional     || 0,
         n:    +r.not_functional || 0,
@@ -1211,6 +1213,7 @@ async function loadDashboard() {
     /* --- ONA_ALL_PLANTS: all ONA plant identities (not limited to 441 matched) --- */
     ONA_ALL_PLANTS = rowsToObjects(onaAllVals).map(function(r) {
       return {
+        uid:  r.plant_uid || '',   // canonical ONA plant identity
         dd:   r.district  || '',
         sf:   r.facility  || '',   // normalized facility name from ONA
         osc:  r.scheme    || '',
@@ -1230,6 +1233,7 @@ async function loadDashboard() {
     ONA_MONTHLY_ALL = rowsToObjects(onaMonthVals).map(function(r) {
       return {
         m:    r.month    || '',
+        uid:  r.plant_uid || '',
         dist: r.district || '',
         fac:  r.facility || '',   // normalized ONA facility (per-plant aggregation)
         tot:  +r.total   || 0,
@@ -1253,11 +1257,11 @@ async function loadDashboard() {
       .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:(a.sf<b.sf?-1:1); })
       .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; }));
 
-    // Page 2 (EU): districts and plants from EU_ALL_PLANTS
+    // Page 2 (EU): one option per unique plant, keyed by canonical plant_uid.
     DISTRICTS_BY_PAGE['2'] = [...new Set(EU_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
     PLANTS_BY_PAGE['2'] = dedupByVal_(EU_ALL_PLANTS
-      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:0; })
-      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; }));
+      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:((a.sf||'')<(b.sf||'')?-1:1); })
+      .map(function(p){ return { val:p.uid, label:((p.sf||'')+(p.co!=null?' · '+p.co+' LPM':'')).slice(0,42), dist:p.dd, cap:p.co, code:null }; }));
 
     // Page 3 (Registry): districts and plants from REGISTRY_ALL
     DISTRICTS_BY_PAGE['3'] = [...new Set(REGISTRY_ALL.map(function(p){return p.dd;}).filter(Boolean))].sort();
@@ -1464,6 +1468,16 @@ function updateMethodology() {
   document.querySelectorAll('.meth-window-start').forEach(function(el) { el.textContent = fmt(windowStart); });
 }
 
+/* Resolve a plant-filter value (now a plant_uid, or a legacy code / dd|sf key)
+   to a readable label, using that page's dropdown options as the source. */
+function plantLabelFor_(pgIdx, val) {
+  var opt = (PLANTS_BY_PAGE[String(pgIdx)] || []).find(function(o){ return o.val === val; });
+  if (opt) return opt.label + (opt.dist ? ' (' + opt.dist + ')' : '');
+  var sp = (RAW.slim_plants || []).find(function(p){ return String(p.c) === val; });
+  if (sp) return '#' + sp.c + ' ' + (sp.sf || sp.of || '').slice(0, 26);
+  return (val && val.indexOf('|') !== -1) ? val.split('|').filter(Boolean)[0] : ('#' + val);
+}
+
 /* ---- Filter context bars — shown above every chart ---- */
 function makeFilterBar_(pgIdx) {
   var distSel  = msGet('ms' + pgIdx + 'd') || [];
@@ -1478,11 +1492,7 @@ function makeFilterBar_(pgIdx) {
   if (distSel.length)  parts.push('<strong>District:</strong> ' + distSel.join(', '));
   if (deptSel.length)  parts.push('<strong>Department:</strong> ' + deptSel.join(', '));
   if (plantSel.length) {
-    var labels = plantSel.map(function(key) {
-      var p = (RAW.slim_plants || []).find(function(pl) { return String(pl.c) === key; });
-      if (p) return '#' + p.c + ' ' + (p.sf || p.of || '').slice(0, 28);
-      return key.indexOf('|') !== -1 ? key.split('|')[1].slice(0, 30) : '#' + key;  // dd|facility key
-    });
+    var labels = plantSel.map(function(key){ return plantLabelFor_(pgIdx, key); });
     parts.push('<strong>Plant:</strong> ' + labels.join(', '));
   }
   if (from) parts.push('<strong>From:</strong> ' + from);
@@ -1814,10 +1824,9 @@ var _EXPORT_DATA = {
 
   euPurity: function() {
     var rows = [];
-    Object.entries(TL2.history || {}).forEach(function(e) {
-      var code=e[0], ph=e[1];
+    Object.values(TL2.history || {}).forEach(function(ph) {
       (ph.h||[]).filter(function(d){return d.p!=null&&d.p>0;}).forEach(function(d) {
-        rows.push([ph.di, ph.fa, ph.ca||'', code, d.d||'', Math.round(d.p*10)/10, d.s===1?'Functional':'Non-Functional']);
+        rows.push([ph.di, ph.fa, ph.ca||'', ph.code||'', d.d||'', Math.round(d.p*10)/10, d.s===1?'Functional':'Non-Functional']);
       });
     });
     rows.sort(function(a,b){return a[1]>b[1]?1:-1;});
@@ -2970,13 +2979,13 @@ function rp2(){
   const euRange = window.EU_RANGE || '';
   const euDateLabel = euFrom||euTo ? ` — ${euFrom||'start'} to ${euTo||'today'}` : (euRange ? ' — '+euRange+' (all)' : ' (all)');
   const selDist2  = msGet('ms2d');
-  const selPlant2 = msGet('ms2p');  // district|hospital keys from EU_ALL_PLANTS
+  const selPlant2 = msGet('ms2p');  // canonical plant_uid keys from EU_ALL_PLANTS
   const selDistStr2 = selDist2[0] || '';
 
   // ── EU-ONLY data: ALL EU plants (not capped to 441 matched) ─────────────
   const euAll = EU_ALL_PLANTS.filter(function(p) {
     if (selDist2.length  && !selDist2.includes(p.dd)) return false;
-    if (selPlant2.length && !selPlant2.includes(p.dd+'|'+p.sf)) return false;
+    if (selPlant2.length && !selPlant2.includes(p.uid)) return false;
     if (euFrom && (!p.ed || p.ed < euFrom)) return false;
     if (euTo   && (!p.ed || p.ed > euTo))   return false;
     return true;
@@ -3352,8 +3361,8 @@ function _euIntelRenderDetail(body, ps) {
     const fireBadge = (p.ef === '2' || p.ef === 2) ? badge('Non-compliant','a') : badge('Compliant','gr');
     const hrsTxt    = p.epr != null ? p.epr + ' hrs' : '—';
 
-    const tlCode = (p.c != null) ? String(p.c) : euTL2CodeFor_(p.dd, p.sf||p.of, p.co!=null?p.co:p.cs);
-    const clickAttr = tlCode ? ('style="cursor:pointer" onclick="pur2ClickPlant(\'' + tlCode + '\')"') : '';
+    const uid = p.uid || '';   // EU_ALL_PLANTS rows carry the canonical plant_uid
+    const clickAttr = uid ? ('style="cursor:pointer" onclick="pur2ClickPlant(\'' + uid.replace(/'/g,"\\'") + '\')"') : '';
     return '<tr ' + clickAttr + '>'
       + '<td style="font-size:11px">' + p.dd + '</td>'
       + '<td>' + (p.sf||p.of) + '</td>'
@@ -3385,37 +3394,25 @@ function _euIntelRenderDetail(body, ps) {
    Matched plants come from RAW.slim_plants; unmatched EU plants (synthetic
    "V…" codes) are reconstructed from the full EU timeline (TL2) so every
    unique plant — not just the registry-matched ones — can show its trend. */
-function euPlantByCode_(code){
-  var c = String(code);
-  var sp = (RAW.slim_plants||[]).find(function(pl){ return String(pl.c) === c; });
-  if (sp) return sp;
-  var e = TL2.history[c];
-  if (!e) return null;
-  var reads = (e.h||[]).slice().sort(function(a,b){ return (a.d||'') < (b.d||'') ? -1 : 1; });
-  var latest = reads.length ? reads[reads.length-1] : null;
-  return {
-    c: c, dd: e.di, sf: e.fa, of: e.fa, co: e.ca, cs: e.ca,
-    ep: (latest && latest.p != null) ? latest.p : null,
-    ed: latest ? latest.d : null,
-    es: latest ? (latest.es || (latest.s===1 ? 'Functional' : 'Non Functional Repairable')) : '',
-    cl: [],  // EU Mockdrill page is pure-EU — no complaint data
-  };
-}
-
-/* Map an EU all-plants identity (district + facility + capacity) to a timeline
-   code in TL2, so the EU Intelligence rows (whose plants carry no code) can open
-   the per-plant purity trend. Returns the code string, or '' if no match. */
-function euTL2CodeFor_(dd, fac, cap){
-  function fnorm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
-  var fn = fnorm(fac), withCap='', anyCap='';
-  var keys = Object.keys(TL2.history);
-  for (var i=0;i<keys.length;i++){
-    var e = TL2.history[keys[i]];
-    if (e.di !== dd || fnorm(e.fa) !== fn) continue;
-    if (cap != null && e.ca === cap) { withCap = keys[i]; break; }
-    if (!anyCap) anyCap = keys[i];
+/* Resolve an EU plant for the per-plant views by canonical plant_uid.
+   TL2 (the full EU timeline) is keyed by uid, so this is a single exact lookup —
+   no facility-name matching or code bridges. Works for every unique plant. */
+function euPlantByUID_(uid){
+  var e = TL2.history[uid];
+  if (e) {
+    var reads = (e.h||[]).slice().sort(function(a,b){ return (a.d||'') < (b.d||'') ? -1 : 1; });
+    var latest = reads.length ? reads[reads.length-1] : null;
+    return {
+      c: uid, uid: uid, code: e.code, dd: e.di, sf: e.fa, of: e.fa, co: e.ca, cs: e.ca,
+      ep: (latest && latest.p != null) ? latest.p : null,
+      ed: latest ? latest.d : null,
+      es: latest ? (latest.es || (latest.s===1 ? 'Functional' : 'Non Functional Repairable')) : '',
+      el: false, ef: '', cl: [],  // EU Mockdrill page is pure-EU
+    };
   }
-  return withCap || anyCap || '';
+  // Fallback: EU_ALL_PLANTS row (e.g. plant with no dated drills in TL2)
+  var p = (EU_ALL_PLANTS||[]).find(function(x){ return x.uid === uid; });
+  return p ? Object.assign({c:uid}, p) : null;
 }
 
 /* ── EU timeline using ALL EU drills (EU_MONTHLY_ALL) ── */
@@ -3624,13 +3621,12 @@ function eutlDrawMonth(ym){
   // ALL unique EU plants that drilled this month — matched AND unmatched — not just
   // the registry-matched set. One row per plant (its latest drill that month).
   const facSet=(eutlFacKeys&&eutlFacKeys.length)?eutlFacKeys:null;
-  function fnorm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
   const ord={'Functional':0,'Functional Installed':1,'In Complaint':2,'Non Functional Repairable':3};
   const list=[];
-  Object.keys(TL2.history).forEach(function(code){
-    const e=TL2.history[code];
+  Object.keys(TL2.history).forEach(function(uid){
+    const e=TL2.history[uid];
     if(eutlDistFilter && e.di!==eutlDistFilter) return;
-    if(facSet && facSet.indexOf(e.di+'|'+fnorm(e.fa))===-1) return;
+    if(facSet && facSet.indexOf(uid)===-1) return;   // exact plant_uid match
     var drills=(e.h||[]).filter(function(x){
       return x.d && x.d.slice(0,7)===ym && (!eutlEuFrom||x.d>=eutlEuFrom) && (!eutlEuTo||x.d<=eutlEuTo);
     });
@@ -3638,7 +3634,7 @@ function eutlDrawMonth(ym){
     drills.sort(function(a,b){ return a.d>b.d?-1:1; });
     var latest=drills[0];
     var es=latest.es || (latest.s===1?'Functional':'Non Functional Repairable');
-    list.push({ code:code, dd:e.di, fa:e.fa, ca:e.ca, es:es, ep:latest.p, n:drills.length });
+    list.push({ uid:uid, code:e.code, dd:e.di, fa:e.fa, ca:e.ca, es:es, ep:latest.p, n:drills.length });
   });
   list.sort(function(a,b){ return (ord[a.es]||0)-(ord[b.es]||0)||(a.dd>b.dd?1:-1); });
   if(!list.length){container.innerHTML='<div style="padding:20px;color:var(--muted);font-size:12px">No drills this month.</div>';return;}
@@ -3649,16 +3645,16 @@ function eutlDrawMonth(ym){
     const tip=`${p.es}${p.ep?' | Purity: '+p.ep+'%':''}`;
     const dot=`<span title="${tip}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${clr};margin-right:3px;cursor:default;vertical-align:middle"></span>`;
     const codeLbl=/^\d+$/.test(p.code)?'#'+p.code:'';
-    rows+=`<tr style="cursor:pointer" onclick="eutlClickPlant('${p.code}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)} <span style="font-size:10px;color:var(--muted);font-family:monospace">${codeLbl}</span></td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td><span style="background:${clr};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${p.es||'—'}</span></td> <td style="font-size:11px;text-align:center">${pur}</td> <td style="font-size:11px;text-align:center">${p.n}</td> <td>${dot}</td></tr>`;
+    rows+=`<tr style="cursor:pointer" onclick="eutlClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)} <span style="font-size:10px;color:var(--muted);font-family:monospace">${codeLbl}</span></td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td><span style="background:${clr};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${p.es||'—'}</span></td> <td style="font-size:11px;text-align:center">${pur}</td> <td style="font-size:11px;text-align:center">${p.n}</td> <td>${dot}</td></tr>`;
   });
   container.innerHTML=`<div style="overflow-x:auto"> <table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Status</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Purity</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Drills</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Drill dots (hover for detail)</th> </tr></thead> <tbody>${rows}</tbody> </table> </div>`;
 }
-function eutlClickPlant(code){
+function eutlClickPlant(uid){
   eutlMode='plant';
-  const p=euPlantByCode_(code); if(!p) return;   // matched (slim_plants) OR unmatched (TL2)
+  const p=euPlantByUID_(uid); if(!p) return;   // exact plant_uid lookup (matched or unmatched)
   document.getElementById('eutl-breadcrumb').style.display='block';
   const prev=eutlActiveMonth?eutlMonthLabel(eutlActiveMonth):'Overview';
-  const lbl=/^\d+$/.test(String(p.c))?`#${p.c} `:'';
+  const lbl=/^\d+$/.test(String(p.code))?`#${p.code} `:'';
   document.getElementById('eutl-bc-text').textContent=` / ${prev} / ${lbl}${(p.sf||p.of||'').slice(0,25)}`;
   document.getElementById('eutl-title').textContent=`EU drill — ${lbl}${p.sf||p.of} (${p.dd})`;
   eutlDrawPlant(p);
@@ -3667,7 +3663,7 @@ function eutlClickPlant(code){
    built from the full timeline (TL2) so it works for every unique plant. */
 function eutlDrawPlant(p){
   const container=document.getElementById('eutl-container');
-  const ph=TL2.history[String(p.c)];
+  const ph=TL2.history[p.uid||String(p.c)];
   const reads=ph?(ph.h||[]).slice().sort(function(a,b){ return (a.d||'')<(b.d||'')?-1:1; }):[];
   const clrOf=function(es){ return es==='Functional'?'#1D9E75':es==='Functional Installed'?'#378ADD':es==='In Complaint'?'#E24B4A':'#EF9F27'; };
   const statusOf=function(r){ return r.es || (r.s===1?'Functional':'Non Functional Repairable'); };
@@ -3677,7 +3673,7 @@ function eutlDrawPlant(p){
   const chips=`
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:var(--bg);border-radius:8px;padding:10px 14px">
       <span class="badge" style="background:${lblc};color:#fff">${p.es||'—'}</span>
-      <span style="font-size:11px;color:var(--muted)"><span style="font-family:monospace">${/^\d+$/.test(String(p.c))?'#'+p.c+' ':''}</span>${p.sf||p.of||''} · ${p.dd} · ${p.co||'—'} LPM</span>
+      <span style="font-size:11px;color:var(--muted)"><span style="font-family:monospace">${/^\d+$/.test(String(p.code))?'#'+p.code+' ':''}</span>${p.sf||p.of||''} · ${p.dd} · ${p.co||'—'} LPM</span>
       <span style="font-size:11px;color:var(--muted)">Latest purity: <b style="color:${purClr}">${p.ep?p.ep+'%':'—'}</b></span>
       <span style="font-size:11px;color:var(--muted)">${reads.length} drill${reads.length!==1?'s':''}</span>
       ${p.el?'<span style="font-size:11px;color:#E24B4A">Leak reported</span>':''}
@@ -4113,19 +4109,18 @@ function pur2DrawMonth(ym){
   // plant that recorded a valid purity that month — matched AND unmatched — using
   // that month's actual reading (not the plant's latest-ever reading).
   const facSet=(pur2FacKeys&&pur2FacKeys.length)?pur2FacKeys:null;
-  function fnorm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
   const list=[];
-  Object.keys(TL2.history).forEach(function(code){
-    const e=TL2.history[code];
+  Object.keys(TL2.history).forEach(function(uid){
+    const e=TL2.history[uid];
     if(pur2DistFilter && e.di!==pur2DistFilter) return;
-    if(facSet && facSet.indexOf(e.di+'|'+fnorm(e.fa))===-1) return;
+    if(facSet && facSet.indexOf(uid)===-1) return;   // exact plant_uid match
     var drills=(e.h||[]).filter(function(x){
       return x.d && x.d.slice(0,7)===ym && x.p!=null && x.p>0 && x.p<=100
         && (!pur2EuFrom||x.d>=pur2EuFrom) && (!pur2EuTo||x.d<=pur2EuTo);
     });
     if(!drills.length) return;
     drills.sort(function(a,b){ return a.d>b.d?-1:1; });
-    list.push({ code:code, dd:e.di, fa:e.fa, ca:e.ca, ep:drills[0].p });
+    list.push({ uid:uid, code:e.code, dd:e.di, fa:e.fa, ca:e.ca, ep:drills[0].p });
   });
   if(!list.length){container.innerHTML='<div style="padding:20px;color:var(--muted);font-size:12px">No purity data for this month.</div>';return;}
   list.sort(function(a,b){ return (a.ep||0)-(b.ep||0); });
@@ -4133,26 +4128,25 @@ function pur2DrawMonth(ym){
   list.forEach(function(p){
     const col=pur2Color(p.ep);
     const codeLbl=/^\d+$/.test(p.code)?'#'+p.code:'';
-    rows+=`<tr style="cursor:pointer" onclick="pur2ClickPlant('${p.code}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)} <span style="font-size:10px;color:var(--muted);font-family:monospace">${codeLbl}</span></td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td style="font-size:13px;font-weight:600;color:${col};text-align:center">${p.ep}%</td></tr>`;
+    rows+=`<tr style="cursor:pointer" onclick="pur2ClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)} <span style="font-size:10px;color:var(--muted);font-family:monospace">${codeLbl}</span></td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td style="font-size:13px;font-weight:600;color:${col};text-align:center">${p.ep}%</td></tr>`;
   });
   const avgV=list.reduce((s,p)=>s+(p.ep||0),0)/list.length;
   container.innerHTML=`
     <div style="font-size:11px;color:var(--muted);margin:8px 0 10px">${list.length} plants · avg <b style="color:${pur2Color(avgV)}">${avgV.toFixed(1)}%</b> · click a row for the plant's purity trend</div> <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">EU Purity</th> </tr></thead><tbody>${rows}</tbody></table></div>`;
 }
-function pur2ClickPlant(code){
+function pur2ClickPlant(uid){
   pur2Mode='plant';
-  const p=euPlantByCode_(code); if(!p) return;   // resolves matched (slim_plants) OR unmatched (TL2) plants
+  const p=euPlantByUID_(uid); if(!p) return;   // exact plant_uid lookup (matched or unmatched)
   document.getElementById('pur2-breadcrumb').style.display='block';
   const prev=pur2ActiveMonth?pur2MonthLabel(pur2ActiveMonth):'Overview';
-  const lbl=/^\d+$/.test(String(p.c))?`#${p.c} `:'';
+  const lbl=/^\d+$/.test(String(p.code))?`#${p.code} `:'';
   document.getElementById('pur2-bc-text').textContent=` / ${prev} / ${lbl}${(p.sf||p.of||'').slice(0,22)}`;
   document.getElementById('pur2-title').textContent=`EU purity — ${lbl}${p.sf||p.of} (${p.dd})`;
   pur2DrawPlant(p);
 }
 function pur2DrawPlant(p){
   const container = document.getElementById('pur2-container');
-  const code      = String(p.c);
-  const ph        = TL2.history[code];
+  const ph        = TL2.history[p.uid || String(p.c)];
   const comps     = p.cl || [];
 
   // Build sorted purity readings from EU timeline
@@ -4629,8 +4623,11 @@ let tlFacKeys        = null;   // district|facility keys for per-plant filtering
    (backward compatible with monthly data produced before the per-plant derive). */
 function applyFacFilter_(rows, facKeys){
   if (!facKeys || !facKeys.length) return rows;
-  if (!rows.some(function(r){ return r.fac; })) return rows;
-  return rows.filter(function(r){ return facKeys.indexOf(r.dist+'|'+r.fac) !== -1; });
+  // Match by canonical plant_uid (EU page, exact) OR legacy district|facility
+  // key (ONA page until it is wired to uid). Either form keeps the row.
+  return rows.filter(function(r){
+    return (r.uid && facKeys.indexOf(r.uid) !== -1) || facKeys.indexOf(r.dist+'|'+r.fac) !== -1;
+  });
 }
 
 /* ── tlApplyAllONA: ONA timeline using ALL ONA drills (ONA_MONTHLY_ALL) ── */
@@ -5501,9 +5498,7 @@ function msUpdateTrigger(id) {
     if(cfg.type==='district' || cfg.type==='dept') {
       label.textContent = v;
     } else {
-      const p = RAW.slim_plants.find(x=>String(x.c)===v);
-      label.textContent = p ? `#${p.c} ${(p.sf||p.of).slice(0,24)}…`
-        : (v.indexOf('|')!==-1 ? v.split('|')[1].slice(0,28) : `#${v}`);
+      label.textContent = plantLabelFor_(cfg.page, v).slice(0,30);
     }
     count.style.display = 'none';
   } else {
@@ -5572,9 +5567,9 @@ function updateAFB(pgEl, pgNum) {
     tags.push(`<span class="af-tag">${d} <button onclick="msRemoveItem('ms${pgNum}d','${d}','${pgEl}','${pgNum}')">×</button></span>`);
   });
   pSel.forEach(v=>{
-    const p=RAW.slim_plants.find(x=>String(x.c)===v);
-    const lbl = p?`#${p.c} ${(p.sf||p.of).slice(0,28)}`:`#${v}`;
-    tags.push(`<span class="af-tag">${lbl} <button onclick="msRemoveItem('ms${pgNum}p','${v}','${pgEl}','${pgNum}')">×</button></span>`);
+    const lbl = plantLabelFor_(pgNum, v);
+    const vEsc = String(v).replace(/'/g,"\\'");
+    tags.push(`<span class="af-tag">${lbl} <button onclick="msRemoveItem('ms${pgNum}p','${vEsc}','${pgEl}','${pgNum}')">×</button></span>`);
   });
   el.innerHTML = tags.join('');
 }
