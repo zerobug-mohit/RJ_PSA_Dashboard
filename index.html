@@ -1077,12 +1077,12 @@ async function loadDashboard() {
         };
       });
 
-    /* --- TL (ONA per-plant timeline) --- */
+    /* --- TL (ONA per-plant timeline) — keyed by canonical plant_uid --- */
     TL = { history: {} };
     rowsToObjects(onaTLVals).forEach(function(r) {
-      const c = String(r.code);   // ONA still keyed by code (wired to uid in step 3)
-      if (!TL.history[c]) TL.history[c] = { uid: r.plant_uid || c, code: c, di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
-      TL.history[c].h.push({
+      const uid = r.plant_uid || String(r.code);   // fallback to code if uid column absent (pre-rederive)
+      if (!TL.history[uid]) TL.history[uid] = { uid: uid, code: String(r.code), di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
+      TL.history[uid].h.push({
         d: normDate_(r.date),
         p: r.purity !== '' ? +r.purity : null,
         s: +r.status,
@@ -1249,13 +1249,13 @@ async function loadDashboard() {
     function dedupByVal_(arr){
       var seen = {}; return arr.filter(function(o){ if(seen[o.val]) return false; seen[o.val]=1; return true; });
     }
-    // Page 1 (ONA): districts and plants from ONA_ALL_PLANTS.
-    // Plant filter keyed by district|facility (dd|sf) — same identity space as the
-    // per-plant monthly data — so it can drive KPIs, intelligence AND trend charts.
+    // Page 1 (ONA): one option per unique plant, keyed by canonical plant_uid —
+    // same identity space as the per-plant monthly/timeline data — so it can drive
+    // KPIs, intelligence AND trend charts.
     DISTRICTS_BY_PAGE['1'] = [...new Set(ONA_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
     PLANTS_BY_PAGE['1'] = dedupByVal_(ONA_ALL_PLANTS
-      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:(a.sf<b.sf?-1:1); })
-      .map(function(p){ return { val:p.dd+'|'+p.sf, label:(p.sf||'').slice(0,38), dist:p.dd, cap:p.co, code:null }; }));
+      .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:((a.sf||'')<(b.sf||'')?-1:1); })
+      .map(function(p){ return { val:p.uid, label:((p.sf||'')+(p.co!=null?' · '+p.co+' LPM':'')).slice(0,42), dist:p.dd, cap:p.co, code:null }; }));
 
     // Page 2 (EU): one option per unique plant, keyed by canonical plant_uid.
     DISTRICTS_BY_PAGE['2'] = [...new Set(EU_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
@@ -2254,11 +2254,11 @@ function rp1(){
   // Filter by district / department / plant / drill-date from current selections
   const selDist = msGet('ms1d');
   const selDept = msGet('ms1dept');
-  const selFacKeys = msGet('ms1p');  // district|facility keys (dd|sf) from ONA_ALL_PLANTS
+  const selFacKeys = msGet('ms1p');  // canonical plant_uid keys from ONA_ALL_PLANTS
   const onaAll  = ONA_ALL_PLANTS.filter(function(p) {
     if (selDist.length && !selDist.includes(p.dd)) return false;
     if (selDept.length && p.dept && !selDept.includes(p.dept)) return false;
-    if (selFacKeys.length && !selFacKeys.includes(p.dd+'|'+p.sf)) return false;
+    if (selFacKeys.length && !selFacKeys.includes(p.uid)) return false;
     if (fromD && (!p.od || p.od < fromD)) return false;
     if (toD   && (!p.od || p.od > toD))   return false;
     return true;
@@ -2562,9 +2562,9 @@ function _onaIntelRenderDetail(body, ps) {
         + '<span style="font-size:10px;color:var(--muted)">' + p.or_.slice(0,60) + '</span>'
       : '—';
 
-    return '<tr style="cursor:pointer" onclick="purClickPlant(\'' + p.c + '\')">'
+    return '<tr style="cursor:pointer" onclick="purClickPlant(\'' + (p.uid||'').replace(/'/g,"\\'") + '\')">'
       + '<td style="font-size:11px">' + p.dd + '</td>'
-      + '<td>' + (p.sf||p.of) + ' <span style="font-size:10px;color:var(--muted);font-family:monospace">#' + p.c + '</span></td>'
+      + '<td>' + (p.sf||p.of) + '</td>'
       + '<td style="font-size:11px;text-align:center">' + (p.co||p.cs||'—') + '</td>'
       + '<td style="font-size:10px">' + (p.osc||'—') + '</td>'
       + '<td>' + badge(p.os||'—', p.os==='Functional'?'g':p.os==='Not-Functional'?'r':'gr') + '</td>'
@@ -2661,7 +2661,7 @@ function purDraw(district, allowedCodes) {
   document.getElementById('pur-title').textContent = 'Purity trend — functional plants (ONA)';
   purDrawOverview(district);
 }
-function purReset() { purDrawAllONA(msGet('ms1d')[0] || ''); }
+function purReset() { purDrawAllONA(msGet('ms1d')[0] || '', fv('f1from')||null, fv('f1to')||null, msGet('ms1p')); }
 
 function purDrawOverview(district) {
   const entries = purHistoryEntries(district, purAllowedCodes);
@@ -2761,21 +2761,22 @@ function purClickMonth(m) {
 
 function purDrawMonth(m) {
   const dist = msGet('ms1d')[0] || '';
-  // Collect all purity readings in this month across all plants
+  const facSet = (purFacKeys && purFacKeys.length) ? purFacKeys : null;
+  // Collect all purity readings in this month across all plants (keyed by plant_uid)
   const plantReadings = [];
-  for (const [code, ph] of Object.entries(TL.history)) {
+  for (const [uid, ph] of Object.entries(TL.history)) {
     if (dist && ph.di !== dist) continue;
-    if (purAllowedCodes && !purAllowedCodes.has(code)) continue;
+    if (facSet && facSet.indexOf(uid) === -1) continue;   // exact plant_uid match
     const monthReads = (ph.h||[])
       .filter(r => r.d && r.d.startsWith(m) && purClamp(r.p) != null)
       .map(r => purClamp(r.p));
     if (!monthReads.length) continue;
     const avg = Math.round(monthReads.reduce((s,v)=>s+v,0)/monthReads.length * 10)/10;
-    // Find slim_plant for complaint info
-    const sp = RAW.slim_plants.find(p => String(p.c) === code);
+    // Find slim_plant (by registry code) for complaint info
+    const sp = ph.code ? RAW.slim_plants.find(p => String(p.c) === String(ph.code)) : null;
     const comps = sp ? (sp.cl||[]) : [];
     const hasActive = sp && (sp.ha || comps.some(c=>c.status!=='Resolved'));
-    plantReadings.push({ code, di: ph.di, fa: ph.fa, ca: ph.ca, avg, readings: monthReads.length, comps: comps.length, hasActive });
+    plantReadings.push({ uid, code: ph.code, di: ph.di, fa: ph.fa, ca: ph.ca, avg, readings: monthReads.length, comps: comps.length, hasActive });
   }
   plantReadings.sort((a,b) => a.avg - b.avg);
 
@@ -2803,8 +2804,9 @@ function purDrawMonth(m) {
     const activeBadge = p.hasActive
       ? `<span style="background:#E24B4A22;color:#E24B4A;padding:1px 5px;border-radius:4px;font-size:10px;margin-left:3px">open</span>` : '';
     // Mini sparkline using full history
-    const spark = purMiniSparkline(p.code);
-    return `<tr onclick="purClickPlant('${p.code}')" style="cursor:pointer"> <td>${p.di}</td> <td>${p.fa.slice(0,35)} <span style="font-size:10px;color:var(--muted);font-family:monospace">#${p.code}</span></td> <td style="white-space:nowrap">${p.ca}</td> <td>${spark}</td> <td><span style="font-weight:700;color:${c}">${p.avg}%</span></td> <td>${compBadge}${activeBadge}</td> </tr>`;
+    const spark = purMiniSparkline(p.uid);
+    const codeLbl = (p.code && /^\d+$/.test(String(p.code))) ? `<span style="font-size:10px;color:var(--muted);font-family:monospace">#${p.code}</span>` : '';
+    return `<tr onclick="purClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')" style="cursor:pointer"> <td>${p.di}</td> <td>${p.fa.slice(0,35)} ${codeLbl}</td> <td style="white-space:nowrap">${p.ca}</td> <td>${spark}</td> <td><span style="font-weight:700;color:${c}">${p.avg}%</span></td> <td>${compBadge}${activeBadge}</td> </tr>`;
   }).join('');
 
   document.getElementById('pur-container').innerHTML = `
@@ -2813,8 +2815,8 @@ function purDrawMonth(m) {
 }
 
 // Render a tiny 60×20 SVG sparkline for a plant's full purity history
-function purMiniSparkline(code) {
-  const ph = TL.history[String(code)];
+function purMiniSparkline(uid) {
+  const ph = TL.history[uid];
   if (!ph) return '—';
   const vals = (ph.h||[]).map(r => purClamp(r.p)).filter(v=>v!=null);
   if (vals.length < 2) return vals.length === 1 ? `<span style="font-size:10px;color:${purColor(vals[0])}">${vals[0]}%</span>` : '—';
@@ -2828,23 +2830,24 @@ function purMiniSparkline(code) {
   return `<svg width="60" height="20" style="vertical-align:middle;overflow:visible"> <polyline points="${pts}" fill="none" stroke="${lastColor}" stroke-width="1.5" stroke-linejoin="round" opacity="0.85"/> <circle cx="${(vals.length < 2 ? W/2 : W)}" cy="${vals.length<2?H/2:(+pts.split(' ').pop().split(',')[1])}" r="2.5" fill="${lastColor}"/> </svg>`;
 }
 
-function purClickPlant(code) {
+function purClickPlant(uid) {
   purMode = 'plant';
-  purActiveCode = code;
-  const ph = TL.history[String(code)];
+  purActiveCode = uid;
+  const ph = TL.history[uid];
   if (!ph) return;
   document.getElementById('pur-breadcrumb').style.display = 'inline-flex';
   const bcMonth  = purClickedMonth ? ` / ${purClickedMonth.replace('-','/')}` : '';
-  const isMatched = !String(code).startsWith('U');
-  const plantLabel = isMatched ? `#${code} ${ph.fa.slice(0,28)}` : ph.fa.slice(0,35) + ' (unmatched)';
+  const code = ph.code;
+  const isMatched = code && /^\d+$/.test(String(code));
+  const plantLabel = isMatched ? `#${code} ${ph.fa.slice(0,28)}` : ph.fa.slice(0,35) + ' (ONA only)';
   document.getElementById('pur-bc-text').textContent = `${bcMonth} / ${plantLabel}`;
   document.getElementById('pur-title').textContent   = isMatched
     ? `#${code} ${ph.fa} (${ph.di})`
     : `${ph.fa} — ${ph.di} (ONA only — not in registry)`;
-  purDrawPlant(code, ph);
+  purDrawPlant(uid, ph);
 }
 
-function purDrawPlant(code, ph) {
+function purDrawPlant(uid, ph) {
   const reads = (ph.h||[])
     .map(r => ({ d: r.d, p: purClamp(r.p), s: r.s, r: r.r }))
     .sort((a,b) => (a.d||'') < (b.d||'') ? -1 : 1);
@@ -2852,8 +2855,8 @@ function purDrawPlant(code, ph) {
   const purityReads = reads.filter(r => r.p != null);
   const nfPeriods   = reads.filter(r => r.s === 0 && r.r);
 
-  // Find slim plant for complaint data
-  const sp = RAW.slim_plants.find(p => String(p.c) === String(code));
+  // Find slim plant (by registry code) for complaint data
+  const sp = ph.code ? RAW.slim_plants.find(p => String(p.c) === String(ph.code)) : null;
   const comps = sp ? (sp.cl||[]) : [];
 
   // Latest purity
@@ -4812,7 +4815,7 @@ function tlReset() {
   tlMode='overview'; tlActiveMonth=null; tlActiveCode=null;
   document.getElementById('tl-breadcrumb').style.display='none';
   document.getElementById('tl-title').textContent='Functionality status over time — ONA mock-drills per plant';
-  tlDrawOverview();
+  tlDrawAllONA();   // active filtered overview (honours district/plant/date selections)
 }
 
 function tlMonthLabel(ym) {
@@ -4885,15 +4888,17 @@ function tlClickMonth(ym) {
 function tlDrawMonth(ym) {
   const container=document.getElementById('tl-container');
 
-  // Get ALL plants (matched + unmatched) that had a drill in this month
+  // Get ALL plants (matched + unmatched) that had a drill in this month (keyed by plant_uid)
+  const facSet=(tlFacKeys&&tlFacKeys.length)?tlFacKeys:null;
   const plantDrills=[];
-  for(const [code,v] of Object.entries(TL.history)) {
+  for(const [uid,v] of Object.entries(TL.history)) {
     if(tlDistrictFilter && v.di!==tlDistrictFilter) continue;
+    if(facSet && facSet.indexOf(uid)===-1) continue;   // exact plant_uid match
     const drills=v.h.filter(h=>h.d&&h.d.startsWith(ym)&&(!tlFromD||h.d>=tlFromD)&&(!tlToD||h.d<=tlToD));
     if(drills.length===0) continue;
     const last=drills[drills.length-1];
-    const isMatched = !String(code).startsWith('U');
-    plantDrills.push({code,district:v.di,facility:v.fa,cap:v.ca,drills,lastStatus:last.s,lastPurity:last.p,isMatched});
+    const isMatched = v.code && /^\d+$/.test(String(v.code));
+    plantDrills.push({uid,code:v.code,district:v.di,facility:v.fa,cap:v.ca,drills,lastStatus:last.s,lastPurity:last.p,isMatched});
   }
 
   plantDrills.sort((a,b)=>a.lastStatus-b.lastStatus||a.facility.localeCompare(b.facility));
@@ -4921,7 +4926,7 @@ function tlDrawMonth(ym) {
       const tip=`${h.d} | ${h.s===1?'Functional':'Not-Functional'}${h.p?` | Purity: ${h.p}%`:''}`;
       dots+=`<span title="${tip}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:3px;cursor:default;vertical-align:middle"></span>`;
     });
-    rows+=`<tr style="cursor:pointer" onclick="tlClickPlant('${p.code}')">
+    rows+=`<tr style="cursor:pointer" onclick="tlClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')">
       <td style="font-size:11px;color:var(--muted)">${p.district}</td>
       <td style="font-size:12px">${p.facility.slice(0,35)} ${codeBadge}</td>
       <td style="font-size:11px;text-align:center">${p.cap||'—'}</td>
@@ -4954,20 +4959,22 @@ function tlDrawMonth(ym) {
   </div>`;
 }
 
-function tlClickPlant(code) {
-  tlMode='plant'; tlActiveCode=code;
-  const v=TL.history[code];
+function tlClickPlant(uid) {
+  tlMode='plant'; tlActiveCode=uid;
+  const v=TL.history[uid];
   if(!v) return;
   document.getElementById('tl-breadcrumb').style.display='block';
   const prevLabel=tlActiveMonth?tlMonthLabel(tlActiveMonth):'Overview';
-  document.getElementById('tl-bc-text').textContent=` / ${prevLabel} / #${code} ${v.fa.slice(0,27)}`;
-  document.getElementById('tl-title').textContent=`Drill history — #${code} ${v.fa} (${v.di})`;
-  tlDrawPlant(code);
+  const isMatched = v.code && /^\d+$/.test(String(v.code));
+  const codeLbl = isMatched ? `#${v.code} ` : '';
+  document.getElementById('tl-bc-text').textContent=` / ${prevLabel} / ${codeLbl}${v.fa.slice(0,27)}`;
+  document.getElementById('tl-title').textContent=`Drill history — ${codeLbl}${v.fa} (${v.di})`;
+  tlDrawPlant(uid);
 }
 
-function tlDrawPlant(code) {
+function tlDrawPlant(uid) {
   const container=document.getElementById('tl-container');
-  const v=TL.history[code];
+  const v=TL.history[uid];
   if(!v||!v.h.length){container.innerHTML='<div style="padding:20px;color:var(--muted);font-size:12px">No drill history.</div>';return;}
   
   // Group by month for the mini trend
