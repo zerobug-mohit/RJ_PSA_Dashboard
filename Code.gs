@@ -1198,6 +1198,7 @@ function deriveDashboard() {
         cm ? cm.dd : '',
         cm ? cm.sf : '',
         cm ? (cm.cs != null ? cm.cs : '') : '',
+        (cm && cm.asset && cm.asset.supplier) ? cm.asset.supplier : (d.mfr || ''),
         d.od,
         d.op != null ? Number(d.op).toFixed(2) : '',
         d.os === 'Functional' || d.os === 'Functional Installed' ? 1 : 0,
@@ -1222,13 +1223,14 @@ function deriveDashboard() {
       districtDisplay(d.distNorm),
       d.facNorm,
       d.lpm != null ? d.lpm : '',
+      d.mfr || '',
       d.od,
       d.op != null ? Number(d.op).toFixed(2) : '',
       d.os === 'Functional' || d.os === 'Functional Installed' ? 1 : 0,
     ]);
   });
 
-  const onaTimelineHeaders = ['code','plant_uid','district','facility','capacity','date','purity','status'];
+  const onaTimelineHeaders = ['code','plant_uid','district','facility','capacity','manufacturer','date','purity','status'];
 
   // ------------------------------------------------------------------
   // BUILD eu_timeline ROWS — ALL EU drills (matched + unmatched)
