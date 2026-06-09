@@ -36,9 +36,9 @@ gs_mapping       ┘                                         ├─ eu_all_plant
    tabs. So a "wrong number" is either (a) a derive/aggregation issue in `Code.gs`, or
    (b) a frontend calc/filter issue — never a raw-sheet read.
 2. **Each source is exposed in *several different shapes*** (e.g. EU appears as
-   `EU_ALL_PLANTS`, `EU_MONTHLY_ALL`, `TL2`, `EU_CROSS`). These are keyed differently and
-   are **not** auto-consistent — see §6. This is the main source of "I changed it in one
-   place and another broke."
+   `EU_ALL_PLANTS`, `EU_MONTHLY_ALL`, `TL2`, `EU_CROSS`). They are now joined by a shared
+   **`plant_uid`** (see §3 note, §10) instead of facility-name matching — so a plant is the
+   same plant across KPI / trend / drill-down. Status semantics live once in **`DEFS`** (§10).
 3. **The page is rebuilt by per-page render functions** (`rp1` ONA, `rp2` EU, `rpC`
    Complaints, `rp3` QR, `rp4` Data Report). Filters call these; `switchTab` calls them.
 
@@ -66,23 +66,26 @@ mangled EU QR).
 | Tab | Columns | Frontend global | Key it's grouped by |
 |---|---|---|---|
 | `plants` | code, district, department, ona_facility, sih_facility, ona_capacity, sih_capacity, ona_status, ona_scheme, ona_purity, ona_drill_date, ona_nf_reason, ona_functional_reason, eu_status, eu_purity, eu_running_hours, eu_drill_date, eu_leakage, eu_fire_safety, qr_suffix, equipment_status, inventory_status, moic_verified_date, has_qr, is_verified, reporting_ever, reporting_recent, days_since_drill, complaint_clean, **complaints** (JSON) | `RAW.slim_plants` | **mapping `code`** (the ~448 matched plants) |
-| `ona_all_plants` | district, facility, scheme, capacity, latest_status, latest_purity, latest_date, nf_reason, drill_count | `ONA_ALL_PLANTS` | `district\|facNorm\|lpm` (no code; `c:null`) |
-| `ona_monthly_all` | month, district, **facility**, total, functional, not_functional, avg_purity | `ONA_MONTHLY_ALL` | `month\|district\|facNorm` |
-| `ona_timeline` | code, district, facility, capacity, date, purity, status | `TL.history` | `code` (matched) or `U#` (unmatched) |
-| `eu_all_plants` | district, hospital, capacity, latest_status, latest_purity, latest_hours, latest_date, eu_leakage, eu_fire_safety, drill_count, **latest_not_running** | `EU_ALL_PLANTS` | **combined: QR\|district\|hospital\|capacity\|manufacturer** (no code; `c:null`) |
-| `eu_monthly_all` | month, district, **facility**, total, functional, not_functional, avg_purity | `EU_MONTHLY_ALL` | `month\|district\|hospNorm` |
-| `eu_timeline` | code, district, facility, capacity, date, purity, status, **eq_status** | `TL2.history` | `code` (matched) or `V#` (unmatched, by `district\|hosp\|cap`) |
+| `ona_all_plants` | **plant_uid**, district, facility, scheme, capacity, latest_status, latest_purity, latest_date, nf_reason, drill_count | `ONA_ALL_PLANTS` | **`plant_uid`** = `district\|facNorm\|lpm` (`onaUID`; `c:null`) |
+| `ona_monthly_all` | month, **plant_uid**, district, **facility**, total, functional, not_functional, avg_purity | `ONA_MONTHLY_ALL` | `month\|plant_uid` |
+| `ona_timeline` | code, **plant_uid**, district, facility, capacity, date, purity, status | `TL.history` | **keyed by `plant_uid`** (entry keeps `code`) |
+| `eu_all_plants` | **plant_uid**, district, hospital, capacity, latest_status, latest_purity, latest_hours, latest_date, eu_leakage, eu_fire_safety, drill_count, **latest_not_running** | `EU_ALL_PLANTS` | **`plant_uid`** = `QR\|district\|hospital\|capacity\|manufacturer` (`euUID`; `c:null`) |
+| `eu_monthly_all` | month, **plant_uid**, district, **facility**, total, functional, not_functional, avg_purity | `EU_MONTHLY_ALL` | `month\|plant_uid` |
+| `eu_timeline` | code, **plant_uid**, district, facility, capacity, date, purity, status, **eq_status** | `TL2.history` | **keyed by `plant_uid`** (entry keeps `code`) |
 | `eu_direct_cross` | district, hospital, capacity, qr_suffix, has_qr, equipment_status, inventory_status, moic_verified_date, is_verified, eu_status, eu_purity, eu_hours, eu_date, eu_leakage, eu_fire_safety, eu_drill_count, complaint_count, has_active_complaint, **complaints** (JSON) | `EU_CROSS` | **one row per registry asset** |
 | `registry_plants` | district, hospital, capacity, qr_suffix, has_qr, equipment_status, inventory_status, moic_verified_date, is_verified | `REGISTRY_ALL` | one row per registry asset (511) |
 | `dist_p1` | district, nf_with_complaint, nf_without_complaint, total_non_functional | — | district |
 | `mapping_report` | code, ona_*, sih_*, match_method, matched_*, complaint_clean, ambiguity_reason | `MAPPING_REPORT` | mapping `code` (all 450) |
 | `meta` | key/value (built_at, coverage_*, counts) | `window._lastBuiltAt`, `COMPLAINTS_TOTAL` | — |
 
-> ⚠️ **The identity mismatch.** `EU_ALL_PLANTS` (KPI count, combined key, no code),
-> `EU_MONTHLY_ALL` (trend bars, by `district\|hosp`), and `TL2` (drill-downs, by code/`V#`,
-> grouped `district\|hosp\|cap`) are **three different groupings of the same EU drills.**
-> They are reconciled today by *facility-name matching*, not a shared id. This is the #1
-> structural fragility (see §6, and the `plant_uid` proposal in the reorg plan).
+> ✅ **The identity mismatch is now fixed by `plant_uid`.** Every ONA tab carries the same
+> `onaUID` (`district\|facNorm\|lpm`) and every EU tab the same `euUID`
+> (`QR\|district\|hospital\|capacity\|manufacturer`), stamped in `Code.gs`. So `*_ALL_PLANTS`
+> (KPIs + dropdown), `*_MONTHLY_ALL` (trends), and `TL`/`TL2` (drill-downs) are now the **same
+> grouping** of each source's drills — joined by id, not by facility-name matching. The plant
+> dropdown emits `plant_uid` values; `applyFacFilter_` matches `r.uid`; per-plant drill-downs
+> resolve by uid (`onaPlantByUID_` / `euPlantByUID_`). This retired the 120↔140 and
+> matched-only-drilldown bugs.
 
 ---
 
@@ -91,10 +94,10 @@ mangled EU QR).
 | Global | What it is | Per-plant fields you'll use |
 |---|---|---|
 | `RAW.slim_plants` | matched plants (~448), the join of ONA↔registry↔EU↔complaints | `c`(code) `dd` `of`(ONA fac) `sf`(SIH fac) `co`/`cs`(cap) `os`(ONA status) `op`(ONA purity) `od` `es`(EU status) `ep`(EU purity) `epr`(hours) `ed` `eq`(QR) `sei`/`sii` `hq` `iv` `re`/`rr`/`ds`(reporting) `cln`(complaint_clean) `cl`(complaints[]) |
-| `ONA_ALL_PLANTS` | every ONA-drilled identity (~482), **not** code-keyed | `dd` `sf`(facNorm) `osc` `co` `os` `op` `od` `or_` `cnt`; `c:null` |
-| `EU_ALL_PLANTS` | every unique EU plant (combined key) | `dd` `sf`(hospNorm) `co` `es` `ep` `epr` `ed` `el` `ef` `cnt` `nr`(not_running); `c:null` |
-| `ONA_MONTHLY_ALL` / `EU_MONTHLY_ALL` | month×district×facility aggregates | `m` `dist` `fac` `tot` `f` `n` `avgP` |
-| `TL.history` / `TL2.history` | per-plant drill history (ONA / EU) keyed by code/synthetic | `{di,fa,ca,h:[{d,p,s,es}]}` |
+| `ONA_ALL_PLANTS` | every ONA-drilled identity (~482) | **`uid`**(plant_uid) `dd` `sf`(facNorm) `osc` `co` `os` `op` `od` `or_` `cnt`; `c:null` |
+| `EU_ALL_PLANTS` | every unique EU plant | **`uid`**(plant_uid) `dd` `sf`(hospNorm) `co` `es` `ep` `epr` `ed` `el` `ef` `cnt` `nr`(not_running); `c:null` |
+| `ONA_MONTHLY_ALL` / `EU_MONTHLY_ALL` | month×plant aggregates | **`uid`** `m` `dist` `fac` `tot` `f` `n` `avgP` |
+| `TL.history` / `TL2.history` | per-plant drill history (ONA / EU), **keyed by `plant_uid`** | `{uid,code,di,fa,ca,h:[{d,p,s,es}]}` |
 | `EU_CROSS` | registry assets joined to EU drills + complaints | `dd` `sf` `cs` `eq` `hq` `sei`/`sii` `es` `ep` `epr` `ed` `eu_drill_count` `ct`(complaint_count) `ha`(active) `cl`(complaints[]) |
 | `REGISTRY_ALL` | all 511 registry assets | `dd` `sf` `cs` `eq` `hq` `sei` `sii` `smd` `iv` |
 | `MAPPING_REPORT` | mapping audit rows | `code` `ona_*` `sih_*` `match_method` `matched_*` `complaint_clean` `ambiguity_reason` |
@@ -112,10 +115,10 @@ Tab order (see `TAB_PAGES` in `switchTab`): **0** User Guide · **1** ONA Mockdr
 
 | Viz (container) | Source | Calculation | Identity | Filters |
 |---|---|---|---|---|
-| **KPIs** (`k1`) | `ONA_ALL_PLANTS` | Card1 **Total ONA plants = 541 (hardcoded)**; Card2 reporting = `onaAll.length`; Functional/Non-functional = count by `os`; Avg purity = mean `op` of functional with `op>0` | `dd\|sf` | district, **plant (ms1p)**, dept, **date (od)** |
-| **Functionality over time** (`tl-container`) | overview: `ONA_MONTHLY_ALL`; drill-down: `TL.history` | monthly stacked f vs n drill counts; dots = avg purity | monthly agg; `applyFacFilter_` for plant | district, plant, date |
-| **Purity distribution** (`pur-container`) | `ONA_MONTHLY_ALL` | monthly weighted avg purity vs 90/93 thresholds | monthly agg | district, plant, date |
-| **ONA Plant Intelligence** (`ona-intel-content`) | `ONA_ALL_PLANTS` (`onaIntelDraw(onaAll)`) | scheme breakdown, NF-reason categories (regex on `or_`), drill recency buckets (`od` vs ref) | `dd\|sf` | district, plant, dept, date |
+| **KPIs** (`k1`) | `ONA_ALL_PLANTS` | Card1 **Total ONA plants = 541 (hardcoded)**; Card2 reporting = `onaAll.length`; Functional/Non-functional = count by `os`; Avg purity = mean `op` of functional with `op>0` | `plant_uid` | district, **plant (ms1p)**, dept, **date (od)** |
+| **Functionality over time** (`tl-container`) | overview: `ONA_MONTHLY_ALL`; drill-down: `TL.history` | monthly stacked f vs n drill counts; dots = avg purity; month/plant drill-downs resolve by `plant_uid` (`TL.history[uid]`) | `plant_uid`; `applyFacFilter_` matches `r.uid` | district, plant, date |
+| **Purity distribution** (`pur-container`) | `ONA_MONTHLY_ALL` + `TL.history` drill-downs | monthly weighted avg purity vs 90/93 thresholds | `plant_uid` | district, plant, date |
+| **ONA Plant Intelligence** (`ona-intel-content`) | `ONA_ALL_PLANTS` (`onaIntelDraw(onaAll)`) | scheme breakdown, NF-reason categories (regex on `or_`), drill recency buckets (`od` vs ref); rows open per-plant purity trend via `p.uid` | `plant_uid` | district, plant, dept, date |
 
 **Source columns:** `ona_all_plants` (latest_status/purity/date/scheme/capacity/nf_reason) ←
 `gs_ona` (Facility, District, Wheather_fn, purity readings, vendorManufacturingHF_1).
@@ -125,18 +128,19 @@ Tab order (see `TAB_PAGES` in `switchTab`): **0** User Guide · **1** ONA Mockdr
 
 | Viz (container) | Source | Calculation | Identity | Filters |
 |---|---|---|---|---|
-| **KPIs** (`k2`) | `EU_ALL_PLANTS` | Total = `euAll.length`; Functional / Functional Installed / In-Complaint+NF Repairable = count by `es`; Purity ≥93% = `ep>=93`; **Purity=0 (not running) = `nr`** | combined key | district, **plant (ms2p)**, **date (ed)** |
-| **Equipment status over time** (`eutl-container`) | overview `EU_MONTHLY_ALL`; **drill-down `TL2.history`** | monthly f/n drill counts; month drill-down lists every plant (matched+unmatched) by that-month status | monthly agg; drill-down by `TL2` + `applyFacFilter_` | district, plant, date |
-| **Purity trend** (`pur2-container`) | overview `EU_MONTHLY_ALL`; **month drill-down `TL2.history`**; per-plant trend `TL2.history` | monthly weighted avg purity; per-plant = full purity time-series | `TL2` | district, plant, date |
-| **EU Mock-Drill Intelligence** (`eu-intel-content`) | `EU_ALL_PLANTS` (`euIntelDraw(euAll)`) | safety flags (`el`, `ef='2'`, not-running), running-hours buckets (`epr`), recency (`ed`); rows open per-plant purity trend via `euTL2CodeFor_` | combined key | district, plant, date |
+| **KPIs** (`k2`) | `EU_ALL_PLANTS` | Total = `euAll.length`; Functional / Functional Installed (`DEFS.euFunctional`) / In-Complaint+NF Repairable (`DEFS.euNonFunctional`) = count by `es`; Purity ≥93% = `ep>=93`; **Purity=0 (not running) = `DEFS.notRunningByPurity`** | `plant_uid` | district, **plant (ms2p)**, **date (ed)** |
+| **Equipment status over time** (`eutl-container`) | overview `EU_MONTHLY_ALL`; **drill-down `TL2.history`** | monthly f/n drill counts; month drill-down lists every plant (matched+unmatched) by that-month status | `plant_uid`; `applyFacFilter_` matches `r.uid` | district, plant, date |
+| **Purity trend** (`pur2-container`) | overview `EU_MONTHLY_ALL`; **month drill-down `TL2.history`**; per-plant trend `TL2.history` | monthly weighted avg purity; per-plant = full purity time-series | `plant_uid` | district, plant, date |
+| **EU Mock-Drill Intelligence** (`eu-intel-content`) | `EU_ALL_PLANTS` (`euIntelDraw(euAll)`) | safety flags (`el`, `ef='2'`, not-running `DEFS.notRunningByHours`), running-hours buckets (`epr`), recency (`ed`); rows open per-plant purity trend via `p.uid` | `plant_uid` | district, plant, date |
 
 **Source columns:** `eu_all_plants` (latest_status/purity/hours/date/leakage/fire/not_running)
 and `eu_monthly_all`/`eu_timeline` all ← `gs_eupkaran` (Equipment Status, Purity, Total
 running hours, Date of Mockdrill, leakage, fire safety).
 
-> Note: the EU per-plant time-series helper `euPlantByCode_(code)` resolves matched plants
-> from `RAW.slim_plants` and unmatched (`V#`) from `TL2`. `euTL2CodeFor_(dd,fac,cap)` maps an
-> `EU_ALL_PLANTS` identity (no code) to a `TL2` code so Intelligence rows can open the trend.
+> Note: per-plant trends resolve purely by `plant_uid`. `euPlantByUID_(uid)` reads `TL2.history[uid]`
+> (falling back to the `EU_ALL_PLANTS` row); ONA's `purClickPlant`/`tlClickPlant` read `TL.history[uid]`.
+> The old code-bridge helpers (`euPlantByCode_`, `euTL2CodeFor_`) are gone — there is no code↔facility
+> matching left on these paths.
 
 ### Page 3 — Complaints Status (`rpC`)  *the only cross-source page; inner sub-tabs*
 
@@ -175,19 +179,21 @@ Static HTML; `updateMethodology()` fills `.meth-ref-date` / `.meth-plant-count` 
 
 ---
 
-## 6. Shared definitions that are currently **duplicated** (the change-pain map)
+## 6. Shared definitions — now collapsed into `DEFS` / `plant_uid`
 
-These concepts are re-implemented in multiple spots. Changing one means hunting the rest —
-this is the friction you described. (Reorg plan: collapse each into one helper / one `uid`.)
+Concepts that used to be re-implemented in many spots (the friction you described) are now
+single-sourced. **Change the meaning once, in `DEFS` (frontend) or the identity helpers
+(Code.gs), and every consumer updates together.**
 
-| Concept | Defined/used in… | Risk |
+| Concept | Single source now | Was |
 |---|---|---|
-| **"Functional"** (`es ∈ {Functional, Functional Installed}`) | `rp2` KPIs, `eutlDrawAllEU`, `eutlDrawMonth`, `eu_monthly_all` (Code.gs), `eu_timeline` status, `EU_CROSS` | change the set → must edit ~6 places |
-| **EU unique-plant identity** | `euAllByIdent` (Code.gs) + facility-name matching in `EU_MONTHLY_ALL`, `TL2`, dropdown dedup, drill-down `fnorm` | the 120↔140 / matched-only-drilldown class of bug |
-| **"Not running"** | `nr` (Code.gs `epZero`), KPI `euNR`, EU-intel safety (`epr===0`) — *two different definitions!* | inconsistent counts |
-| **Status → color** | repeated ternary in `eutlDrawMonth`, `eutlDrawPlant`, `pur2*`, EU-intel | cosmetic drift |
-| **Date range / period label** | `window.ONA_RANGE` / `EU_RANGE` / `COMP_RANGE` (centralized ✓) + date-input min/max | mostly fixed already |
-| **Filter application** | `fp()` (matched), inline filters in `rp1`/`rp2`/`rpC`/`rp3`, `applyFacFilter_` | uneven filter behavior across viz |
+| **"Functional"** (`es ∈ {Functional, Functional Installed}`) | **`DEFS.euFunctional(es)`** (~15 call sites) | duplicated ternary/`||` in ~6 places |
+| **"Non-functional"** (`es ∈ {In Complaint, NF Repairable}`) | **`DEFS.euNonFunctional(es)`** | duplicated `.includes()` in ~6 places |
+| **EU / ONA unique-plant identity** | **`plant_uid`** (`euUID` / `onaUID` in Code.gs), stamped on every tab | `euAllByIdent` + facility-name matching across shapes → the 120↔140 / matched-only-drilldown bugs |
+| **"Not running"** | **`DEFS.notRunningByPurity`** (purity 0 → KPI) vs **`DEFS.notRunningByHours`** (run-hrs 0 → Intelligence) — *two deliberately-distinct, now named* defs | two *unnamed* defs that diverged silently |
+| **Status → color / badge class** | **`DEFS.euStatusColor(es)` / `DEFS.euStatusClass(es)`** (~10 call sites) | repeated ternary in `eutl*`, `pur2*`, EU-intel (incl. one 3-way variant) |
+| **Date range / period label** | `window.ONA_RANGE` / `EU_RANGE` / `COMP_RANGE` (centralized) + date-input min/max | — |
+| **Filter application** | `fp()` (matched), inline filters in `rp1`/`rp2`/`rpC`/`rp3`, `applyFacFilter_` (matches `r.uid`) | *still per-page* — the one remaining duplication; lower risk now that all rows share `plant_uid` |
 
 ---
 
@@ -208,17 +214,19 @@ this is the friction you described. (Reorg plan: collapse each into one helper /
 
 ## 8. Known fragilities (debug here first)
 
-1. **Identity mismatch across EU shapes** (§3 warning) — facility-name matching between
-   `EU_ALL_PLANTS` (combined key), `TL2` (dist\|hosp\|cap), and `EU_MONTHLY_ALL` is imperfect
-   for matched plants whose registry name ≠ EU drill name. *Fix:* one `plant_uid` on every tab.
-2. **`c:null` on `ONA_ALL_PLANTS` / `EU_ALL_PLANTS`** — these can't be looked up by code;
-   per-plant trends need `euPlantByCode_` / `euTL2CodeFor_` bridges. *Fix:* `plant_uid`.
-3. **Silent derive transforms** — e.g. 0-purity → null broke "Purity = 0" until `nr` was added.
-   *Fix:* invariant checks (`runChecks()` in Code.gs + a `?debug=1` overlay).
-4. **Two "not running" definitions** (purity-0 vs hours-0) — reconcile to one.
+1. ✅ **Identity mismatch across EU/ONA shapes** — *resolved* by `plant_uid` stamped on every
+   tab (§3 note). All shapes of a source now share one id; no facility-name matching on these paths.
+2. ✅ **`c:null` lookups** — *resolved*; per-plant trends resolve by `plant_uid`
+   (`euPlantByUID_` / `TL.history[uid]`). The `euPlantByCode_` / `euTL2CodeFor_` bridges are gone.
+3. ✅ **Silent derive transforms** — now guarded by **`runChecks()`** (frontend) surfaced via the
+   **`?debug=1`** overlay; e.g. the 0-purity→null trap is covered by the func+nonfunc≤total assertion.
+4. ✅ **Two "not running" definitions** — *named & documented*, not merged: `DEFS.notRunningByPurity`
+   (purity 0, the KPI) vs `DEFS.notRunningByHours` (run-hrs 0, Intelligence). They measure different
+   things by design; callers now pick explicitly. *(If the product wants a single number, that's a
+   deliberate decision to make — flagged, not silently chosen.)*
 5. **Pre-re-derive fallbacks** — several frontend reads degrade gracefully when a new column
-   (`eq_status`, `latest_not_running`, monthly `facility`) is missing; full accuracy needs a
-   `runDerive()`.
+   (`plant_uid`, `eq_status`, `latest_not_running`, monthly `facility`) is missing; full accuracy
+   needs a `runDerive()`. The `?debug=1` panel will flag missing `plant_uid` immediately.
 
 ---
 
@@ -231,4 +239,47 @@ this is the friction you described. (Reorg plan: collapse each into one helper /
    render function (check §6 for a duplicated definition you may have changed in only one place).
 4. **Check the change-impact matrix (§7)** for siblings that share the definition.
 5. **Reconcile counts:** a KPI count should equal the distinct identities in its source tab.
-   Divergence = the identity-mismatch fragility (§8.1).
+   Divergence used to mean the identity-mismatch fragility — now run **`?debug=1`** (or
+   `runChecks()` in the console) first; a failing invariant usually points straight at it.
+
+---
+
+## 10. Canonical identity (`plant_uid`), shared `DEFS`, and invariant checks
+
+**`plant_uid` — one id per plant per source.** Stamped in `Code.gs` on every plant tab:
+- `onaUID(d)` = `district\|facNorm\|lpm` → on `ona_all_plants`, `ona_monthly_all`, `ona_timeline`
+- `euUID(d)`  = `QR\|district\|hospital\|capacity\|manufacturer` → on `eu_*` tabs
+
+The frontend keys `TL.history` / `TL2.history` by `plant_uid`, the plant dropdown emits it
+(`PLANTS_BY_PAGE['1'|'2']`), KPI filters match `p.uid`, `applyFacFilter_` matches `r.uid`, and
+drill-downs resolve by uid (`euPlantByUID_(uid)` on EU; `TL.history[uid]` inline via
+`purClickPlant`/`tlClickPlant` on ONA). Complaints stay registry-asset-keyed
+(`EU_CROSS`, `plants`) — they are not drill identities.
+
+**`DEFS` — single source of truth for status semantics** (defined next to `badge`/`pct`/`avg`):
+
+| Helper | Meaning |
+|---|---|
+| `DEFS.euFunctional(es)` | `es ∈ {Functional, Functional Installed}` |
+| `DEFS.euNonFunctional(es)` | `es ∈ {In Complaint, Non Functional Repairable}` |
+| `DEFS.onaFunctional(os)` | `os === 'Functional'` |
+| `DEFS.euStatusColor(es)` | Functional→green, Fn Installed→blue, In Complaint→red, other→amber, empty→grey |
+| `DEFS.euStatusClass(es)` | same mapping as g/b/r/a (grey for empty) |
+| `DEFS.notRunningByPurity(p)` | latest drill purity 0 (`p.nr`) — the EU **"Purity = 0" KPI** |
+| `DEFS.notRunningByHours(p)`  | latest drill run-hours 0 (`p.epr===0`) — EU **Intelligence** group |
+
+> Change a definition **here** and every chart/KPI/badge updates together. New code should use
+> `DEFS.*` rather than re-inlining a status comparison.
+
+**Invariant checks — `runChecks()` + `?debug=1`.** `runChecks()` (also `window.runChecks()` from
+the console) asserts the structural facts the widgets depend on: `plant_uid` present + unique per
+plant list, monthly/timeline uids resolve, timelines keyed by non-empty uid, KPI arithmetic
+(func+nonfunc ≤ population), and that the dynamic date spans were derived. Opening the dashboard
+with **`?debug=1`** runs them after every load/refresh and shows a green/red pass-fail panel
+(also mirrored to the console). A red check is a real data/identity regression — fix it before shipping.
+
+### Maintenance checklist (keep this file true)
+- Added/changed a derive column or identity rule → update §2/§3 and re-run `runDerive()`.
+- Added a status meaning or colour → add it to `DEFS` (§10), not inline.
+- Added a structural assumption a widget relies on → add an assertion to `runChecks()`.
+- Added a calc or viz → update `tools/impact_map.json` so the impact analyzer stays accurate.

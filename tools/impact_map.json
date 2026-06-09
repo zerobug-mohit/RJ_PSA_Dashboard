@@ -26,17 +26,29 @@
 
   "symbols": {
     "def.functional": {
-      "desc": "Definition of 'Functional' (status ∈ {Functional, Functional Installed})",
+      "desc": "Definition of 'Functional' / 'Non-Functional'. Frontend single source: DEFS.euFunctional / DEFS.euNonFunctional. Code.gs aggregates use the literal 'Functional Installed'.",
       "files": ["Code.gs", "index.html"], "reDerive": true,
-      "patterns": ["Functional Installed"],
+      "patterns": ["Functional Installed", "DEFS.euFunctional", "DEFS.euNonFunctional"],
       "feeds": ["tab.eu_monthly", "tab.eu_timeline", "tab.ona_monthly", "tab.ona_timeline"],
-      "affects": ["eu.kpis", "ona.kpis"]
+      "affects": ["eu.kpis", "ona.kpis", "eu.timeline", "eu.intel", "comp.eufc"]
     },
     "def.not_running": {
-      "desc": "Definition of 'not running' (raw purity 0 → latest_not_running / nr). NOTE: EU Intelligence uses a DIFFERENT def (running hours 0).",
+      "desc": "Two distinct 'not running' defs, now named in DEFS: notRunningByPurity (purity 0 -> nr -> EU 'Purity=0' KPI) vs notRunningByHours (run-hours 0 -> EU Intelligence).",
       "files": ["Code.gs", "index.html"], "reDerive": true,
-      "patterns": ["latest_not_running", "epZero", "euNR"],
+      "patterns": ["latest_not_running", "epZero", "DEFS.notRunningByPurity", "DEFS.notRunningByHours"],
       "affects": ["eu.kpis", "eu.intel"]
+    },
+    "def.shared_defs": {
+      "desc": "DEFS object — single source of truth for status semantics (euFunctional/euNonFunctional/onaFunctional/euStatusColor/euStatusClass/notRunning*). Change a meaning here and every consumer updates.",
+      "files": ["index.html"], "reDerive": false,
+      "patterns": ["const DEFS", "DEFS.euStatusColor", "DEFS.euStatusClass"],
+      "affects": ["eu.kpis", "ona.kpis", "eu.timeline", "eu.purity", "eu.intel", "comp.eufc"]
+    },
+    "check.invariants": {
+      "desc": "runChecks() structural assertions + ?debug=1 overlay (runDebugOverlay_). A guard, not a data feeder — update it when a widget gains a new structural assumption.",
+      "files": ["index.html"], "reDerive": false,
+      "patterns": ["function runChecks", "runDebugOverlay_"],
+      "affects": []
     },
     "def.filters": {
       "desc": "Filter application (district/plant/date) — fp(), msGet(), applyFacFilter_()",
@@ -45,17 +57,12 @@
       "affects": ["ona.kpis","ona.timeline","ona.purity","ona.intel","eu.kpis","eu.timeline","eu.purity","eu.intel","qr.kpis","qr.funnel","qr.table"]
     },
 
-    "calc.eu_identity": {
-      "desc": "EU unique-plant combined key (QR+District+Hospital+Capacity+Manufacturer) in euAllByIdent",
-      "files": ["Code.gs"], "reDerive": true,
-      "patterns": ["euAllByIdent", "(d.euQR || '')"],
-      "feeds": ["tab.eu_all_plants"]
-    },
-    "calc.ona_identity": {
-      "desc": "ONA unique-plant identity (district|facility|lpm) in onaAllByIdent",
-      "files": ["Code.gs"], "reDerive": true,
-      "patterns": ["onaAllByIdent"],
-      "feeds": ["tab.ona_all_plants"]
+    "calc.plant_uid": {
+      "desc": "Canonical per-plant identity on every plant tab: euUID (QR|district|hospital|capacity|manufacturer) + onaUID (district|facNorm|lpm). Frontend keys TL/TL2, the dropdown, filters and drill-downs by it (euPlantByUID_ on EU; TL.history[uid] inline on ONA).",
+      "files": ["Code.gs", "index.html"], "reDerive": true,
+      "patterns": ["plant_uid", "function euUID", "function onaUID", "euPlantByUID_", "(d.euQR || '')"],
+      "feeds": ["tab.eu_all_plants", "tab.eu_monthly", "tab.eu_timeline", "tab.ona_all_plants", "tab.ona_monthly", "tab.ona_timeline"],
+      "affects": ["ona.kpis","ona.timeline","ona.purity","ona.intel","eu.kpis","eu.timeline","eu.purity","eu.intel"]
     },
     "calc.complaint_match": {
       "desc": "Complaint→plant matching (DHC + manufacturer + QR tiebreak), Step E",
@@ -137,11 +144,11 @@
       "patterns": ["function rp4("], "affects": ["datareport"] },
 
     "widget.eu_timeline_fns": { "desc": "EU timeline widget (overview/month/plant draw)", "files": ["index.html"], "reDerive": false,
-      "patterns": ["eutlDrawAllEU", "eutlDrawMonth", "eutlDrawPlant", "euPlantByCode_"], "affects": ["eu.timeline"] },
+      "patterns": ["eutlDrawAllEU", "eutlDrawMonth", "eutlDrawPlant", "euPlantByUID_"], "affects": ["eu.timeline"] },
     "widget.eu_purity_fns": { "desc": "EU purity widget (overview/month/plant draw)", "files": ["index.html"], "reDerive": false,
       "patterns": ["pur2DrawAllEU", "pur2DrawMonth", "pur2DrawPlant", "pur2ClickPlant"], "affects": ["eu.purity"] },
     "widget.eu_intel_fns": { "desc": "EU Intelligence widget", "files": ["index.html"], "reDerive": false,
-      "patterns": ["euIntelDraw", "_euIntelRenderDetail", "euTL2CodeFor_"], "affects": ["eu.intel"] },
+      "patterns": ["euIntelDraw", "_euIntelRenderDetail", "euPlantByUID_"], "affects": ["eu.intel"] },
     "widget.fc_fns": { "desc": "Functionality-vs-complaint widget (ONA cross)", "files": ["index.html"], "reDerive": false,
       "patterns": ["buildFC_", "fcDrawOverview", "fcDraw("], "affects": ["comp.fc"] },
     "widget.eufc_fns": { "desc": "EU-vs-complaint widget", "files": ["index.html"], "reDerive": false,
