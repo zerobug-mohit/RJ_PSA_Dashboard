@@ -4,6 +4,13 @@
 # Enable once with:   git config core.hooksPath tools/githooks
 # Disable with:       git config --unset core.hooksPath
 
+PY="python"; command -v python >/dev/null 2>&1 || PY="py"; command -v "$PY" >/dev/null 2>&1 || PY="python3"
+
+# Keep the interactive graph in sync whenever the dependency map changes.
+if git diff --cached --name-only | grep -q "tools/impact_map.json"; then
+  "$PY" tools/impact.py --graph >/dev/null 2>&1 && git add tools/impact_graph.html 2>/dev/null
+fi
+
 echo ""
 echo "--- impact analyzer (staged changes) ---"
 ( python tools/impact.py --staged 2>/dev/null \

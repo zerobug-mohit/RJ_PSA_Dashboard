@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>PSA Dashboard — Impact Graph</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1a1a2e;--muted:#6b7280;--line:#d6dae0;--hot:#ef6c00;--hotline:#ef6c00}
+  *{box-sizing:border-box} body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+  header{padding:12px 18px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+  header h1{font-size:15px;margin:0 0 4px} header .sub{font-size:12px;color:var(--muted)}
+  .controls{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{font-size:12px;border:1px solid var(--line);background:#fff;border-radius:6px;padding:5px 10px;cursor:pointer}
+  .btn.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  #banner{font-size:12px;color:var(--muted);margin-left:auto;max-width:55%;text-align:right}
+  #wrap{overflow:auto;height:calc(100vh - 92px)}
+  svg{display:block}
+  .node rect{rx:5;stroke:#b8c0cc;stroke-width:1}
+  .node text{font-size:10.5px;dominant-baseline:middle;pointer-events:none}
+  .node{cursor:pointer}
+  .edge{fill:none;stroke:var(--line);stroke-width:1.2}
+  .edge.hot{stroke:var(--hotline);stroke-width:2.2;opacity:.95}
+  .dim{opacity:.12} .hot rect{stroke:var(--hot);stroke-width:2.5}
+  .layerlbl{font-size:10px;fill:#9aa3af;font-weight:700;letter-spacing:.5px}
+  .pagelbl{font-size:11px;font-weight:700}
+  #tip{position:fixed;pointer-events:none;background:#111827;color:#fff;font-size:11px;line-height:1.5;
+       padding:8px 10px;border-radius:6px;max-width:340px;display:none;z-index:9;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+  #tip b{color:#fde68a} #tip .k{color:#93c5fd}
+  .redr{color:#ef6c00;font-weight:700}
+</style></head><body>
+<header>
+  <h1>PSA Dashboard — Impact Graph</h1>
+  <div class="sub">Click any node to highlight everything it affects. Hover for details. Calcs/tabs flow left → visualizations right.</div>
+  <div class="controls">
+    <button class="btn active" id="m-full" onclick="setMode('full')">Full graph (calcs → visualizations)</button>
+    <button class="btn" id="m-viz" onclick="setMode('viz')">Visualizations only</button>
+    <button class="btn" onclick="reset()">Reset</button>
+    <span id="banner">Nothing selected.</span>
+  </div>
+</header>
+<div id="wrap"><svg id="svg"></svg></div>
+<div id="tip"></div>
+<script>
+const DATA = {"visualizations": {"ona.kpis": {"page": "ONA Mockdrill", "title": "KPIs (Total / Functional / Purity)", "render": "rp1", "container": "k1"}, "ona.timeline": {"page": "ONA Mockdrill", "title": "Functionality over time", "render": "rp1", "container": "tl-container"}, "ona.purity": {"page": "ONA Mockdrill", "title": "Purity distribution", "render": "rp1", "container": "pur-container"}, "ona.intel": {"page": "ONA Mockdrill", "title": "ONA Plant Intelligence", "render": "rp1", "container": "ona-intel-content"}, "eu.kpis": {"page": "EU Mockdrill", "title": "KPIs (Total / Functional / Purity / Purity=0)", "render": "rp2", "container": "k2"}, "eu.timeline": {"page": "EU Mockdrill", "title": "Equipment status over time (+ month/plant drill-down)", "render": "rp2", "container": "eutl-container"}, "eu.purity": {"page": "EU Mockdrill", "title": "Purity trend (+ month/plant drill-down)", "render": "rp2", "container": "pur2-container"}, "eu.intel": {"page": "EU Mockdrill", "title": "EU Mock-Drill Intelligence", "render": "rp2", "container": "eu-intel-content"}, "comp.ona.kpis": {"page": "Complaints Status", "title": "ONA \u00d7 Complaints KPIs", "render": "rpC", "container": "kC1"}, "comp.fc": {"page": "Complaints Status", "title": "Functionality vs complaint (fc)", "render": "rpC", "container": "fc-container"}, "comp.eu.kpis": {"page": "Complaints Status", "title": "EU \u00d7 Complaints KPIs", "render": "rpC", "container": "kC2"}, "comp.eufc": {"page": "Complaints Status", "title": "EU status vs complaint (eufc)", "render": "rpC", "container": "eufc-container"}, "qr.kpis": {"page": "QR Code Coverage", "title": "KPIs (QR / verified / reporting)", "render": "rp3", "container": "k3"}, "qr.funnel": {"page": "QR Code Coverage", "title": "Coverage funnel", "render": "rp3", "container": "funnel"}, "qr.table": {"page": "QR Code Coverage", "title": "Priority action list", "render": "rp3", "container": "t3"}, "datareport": {"page": "Data Report", "title": "Data Transparency Report + export", "render": "rp4", "container": "dr-summary"}}, "symbols": {"def.functional": {"desc": "Definition of 'Functional' (status \u2208 {Functional, Functional Installed})", "reDerive": true, "feeds": ["tab.eu_monthly", "tab.eu_timeline", "tab.ona_monthly", "tab.ona_timeline"], "affects": ["eu.kpis", "ona.kpis"]}, "def.not_running": {"desc": "Definition of 'not running' (raw purity 0 \u2192 latest_not_running / nr). NOTE: EU Intelligence uses a DIFFERENT def (running hours 0).", "reDerive": true, "feeds": [], "affects": ["eu.kpis", "eu.intel"]}, "def.filters": {"desc": "Filter application (district/plant/date) \u2014 fp(), msGet(), applyFacFilter_()", "reDerive": false, "feeds": [], "affects": ["ona.kpis", "ona.timeline", "ona.purity", "ona.intel", "eu.kpis", "eu.timeline", "eu.purity", "eu.intel", "qr.kpis", "qr.funnel", "qr.table"]}, "calc.eu_identity": {"desc": "EU unique-plant combined key (QR+District+Hospital+Capacity+Manufacturer) in euAllByIdent", "reDerive": true, "feeds": ["tab.eu_all_plants"], "affects": []}, "calc.ona_identity": {"desc": "ONA unique-plant identity (district|facility|lpm) in onaAllByIdent", "reDerive": true, "feeds": ["tab.ona_all_plants"], "affects": []}, "calc.complaint_match": {"desc": "Complaint\u2192plant matching (DHC + manufacturer + QR tiebreak), Step E", "reDerive": true, "feeds": ["tab.plants", "tab.eu_cross"], "affects": []}, "tab.plants": {"desc": "plants tab / RAW.slim_plants (matched ~448 plants, complaints JSON)", "reDerive": true, "feeds": [], "affects": ["comp.ona.kpis", "comp.fc", "qr.kpis", "qr.funnel", "qr.table", "datareport"]}, "tab.eu_all_plants": {"desc": "eu_all_plants tab / EU_ALL_PLANTS global (unique EU plants, no code)", "reDerive": true, "feeds": [], "affects": ["eu.kpis", "eu.intel"]}, "tab.eu_monthly": {"desc": "eu_monthly_all tab / EU_MONTHLY_ALL (month\u00d7district\u00d7facility aggregate)", "reDerive": true, "feeds": [], "affects": ["eu.timeline", "eu.purity"]}, "tab.eu_timeline": {"desc": "eu_timeline tab / TL2.history (per-plant EU drill history incl. eq_status)", "reDerive": true, "feeds": [], "affects": ["eu.timeline", "eu.purity", "eu.intel"]}, "tab.eu_cross": {"desc": "eu_direct_cross tab / EU_CROSS (registry\u00d7EU\u00d7complaints)", "reDerive": true, "feeds": [], "affects": ["comp.eu.kpis", "comp.eufc"]}, "tab.ona_all_plants": {"desc": "ona_all_plants tab / ONA_ALL_PLANTS global", "reDerive": true, "feeds": [], "affects": ["ona.kpis", "ona.intel"]}, "tab.ona_monthly": {"desc": "ona_monthly_all tab / ONA_MONTHLY_ALL aggregate", "reDerive": true, "feeds": [], "affects": ["ona.timeline", "ona.purity"]}, "tab.ona_timeline": {"desc": "ona_timeline tab / TL.history (per-plant ONA drill history)", "reDerive": true, "feeds": [], "affects": ["ona.timeline", "ona.purity"]}, "tab.registry": {"desc": "registry_plants tab / REGISTRY_ALL (all 511 registry assets)", "reDerive": true, "feeds": [], "affects": ["qr.kpis", "qr.funnel"]}, "tab.mapping_report": {"desc": "mapping_report tab / MAPPING_REPORT (matching audit)", "reDerive": true, "feeds": [], "affects": ["datareport"]}, "render.rp1": {"desc": "ONA Mockdrill page render", "reDerive": false, "feeds": [], "affects": ["ona.kpis", "ona.timeline", "ona.purity", "ona.intel"]}, "render.rp2": {"desc": "EU Mockdrill page render", "reDerive": false, "feeds": [], "affects": ["eu.kpis", "eu.timeline", "eu.purity", "eu.intel"]}, "render.rpC": {"desc": "Complaints Status page render", "reDerive": false, "feeds": [], "affects": ["comp.ona.kpis", "comp.fc", "comp.eu.kpis", "comp.eufc"]}, "render.rp3": {"desc": "QR Coverage page render", "reDerive": false, "feeds": [], "affects": ["qr.kpis", "qr.funnel", "qr.table"]}, "render.rp4": {"desc": "Data Report page render", "reDerive": false, "feeds": [], "affects": ["datareport"]}, "widget.eu_timeline_fns": {"desc": "EU timeline widget (overview/month/plant draw)", "reDerive": false, "feeds": [], "affects": ["eu.timeline"]}, "widget.eu_purity_fns": {"desc": "EU purity widget (overview/month/plant draw)", "reDerive": false, "feeds": [], "affects": ["eu.purity"]}, "widget.eu_intel_fns": {"desc": "EU Intelligence widget", "reDerive": false, "feeds": [], "affects": ["eu.intel"]}, "widget.fc_fns": {"desc": "Functionality-vs-complaint widget (ONA cross)", "reDerive": false, "feeds": [], "affects": ["comp.fc"]}, "widget.eufc_fns": {"desc": "EU-vs-complaint widget", "reDerive": false, "feeds": [], "affects": ["comp.eufc"]}, "widget.funnel_fns": {"desc": "QR coverage funnel widget", "reDerive": false, "feeds": [], "affects": ["qr.funnel"]}}, "symbol_downstream": {"def.functional": ["def.functional", "eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.kpis", "ona.purity", "ona.timeline", "tab.eu_monthly", "tab.eu_timeline", "tab.ona_monthly", "tab.ona_timeline"], "def.not_running": ["def.not_running", "eu.intel", "eu.kpis"], "def.filters": ["def.filters", "eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "calc.eu_identity": ["calc.eu_identity", "eu.intel", "eu.kpis", "tab.eu_all_plants"], "calc.ona_identity": ["calc.ona_identity", "ona.intel", "ona.kpis", "tab.ona_all_plants"], "calc.complaint_match": ["calc.complaint_match", "comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis", "datareport", "qr.funnel", "qr.kpis", "qr.table", "tab.eu_cross", "tab.plants"], "tab.plants": ["comp.fc", "comp.ona.kpis", "datareport", "qr.funnel", "qr.kpis", "qr.table", "tab.plants"], "tab.eu_all_plants": ["eu.intel", "eu.kpis", "tab.eu_all_plants"], "tab.eu_monthly": ["eu.purity", "eu.timeline", "tab.eu_monthly"], "tab.eu_timeline": ["eu.intel", "eu.purity", "eu.timeline", "tab.eu_timeline"], "tab.eu_cross": ["comp.eu.kpis", "comp.eufc", "tab.eu_cross"], "tab.ona_all_plants": ["ona.intel", "ona.kpis", "tab.ona_all_plants"], "tab.ona_monthly": ["ona.purity", "ona.timeline", "tab.ona_monthly"], "tab.ona_timeline": ["ona.purity", "ona.timeline", "tab.ona_timeline"], "tab.registry": ["qr.funnel", "qr.kpis", "tab.registry"], "tab.mapping_report": ["datareport", "tab.mapping_report"], "render.rp1": ["ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "render.rp1"], "render.rp2": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "render.rp2"], "render.rpC": ["comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis", "render.rpC"], "render.rp3": ["qr.funnel", "qr.kpis", "qr.table", "render.rp3"], "render.rp4": ["datareport", "render.rp4"], "widget.eu_timeline_fns": ["eu.timeline", "widget.eu_timeline_fns"], "widget.eu_purity_fns": ["eu.purity", "widget.eu_purity_fns"], "widget.eu_intel_fns": ["eu.intel", "widget.eu_intel_fns"], "widget.fc_fns": ["comp.fc", "widget.fc_fns"], "widget.eufc_fns": ["comp.eufc", "widget.eufc_fns"], "widget.funnel_fns": ["qr.funnel", "widget.funnel_fns"]}, "symbol_viz": {"def.functional": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.kpis", "ona.purity", "ona.timeline"], "def.not_running": ["eu.intel", "eu.kpis"], "def.filters": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "calc.eu_identity": ["eu.intel", "eu.kpis"], "calc.ona_identity": ["ona.intel", "ona.kpis"], "calc.complaint_match": ["comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis", "datareport", "qr.funnel", "qr.kpis", "qr.table"], "tab.plants": ["comp.fc", "comp.ona.kpis", "datareport", "qr.funnel", "qr.kpis", "qr.table"], "tab.eu_all_plants": ["eu.intel", "eu.kpis"], "tab.eu_monthly": ["eu.purity", "eu.timeline"], "tab.eu_timeline": ["eu.intel", "eu.purity", "eu.timeline"], "tab.eu_cross": ["comp.eu.kpis", "comp.eufc"], "tab.ona_all_plants": ["ona.intel", "ona.kpis"], "tab.ona_monthly": ["ona.purity", "ona.timeline"], "tab.ona_timeline": ["ona.purity", "ona.timeline"], "tab.registry": ["qr.funnel", "qr.kpis"], "tab.mapping_report": ["datareport"], "render.rp1": ["ona.intel", "ona.kpis", "ona.purity", "ona.timeline"], "render.rp2": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline"], "render.rpC": ["comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis"], "render.rp3": ["qr.funnel", "qr.kpis", "qr.table"], "render.rp4": ["datareport"], "widget.eu_timeline_fns": ["eu.timeline"], "widget.eu_purity_fns": ["eu.purity"], "widget.eu_intel_fns": ["eu.intel"], "widget.fc_fns": ["comp.fc"], "widget.eufc_fns": ["comp.eufc"], "widget.funnel_fns": ["qr.funnel"]}, "viz_upstream": {"ona.kpis": ["calc.ona_identity", "def.filters", "def.functional", "render.rp1", "tab.ona_all_plants"], "ona.timeline": ["def.filters", "def.functional", "render.rp1", "tab.ona_monthly", "tab.ona_timeline"], "ona.purity": ["def.filters", "def.functional", "render.rp1", "tab.ona_monthly", "tab.ona_timeline"], "ona.intel": ["calc.ona_identity", "def.filters", "render.rp1", "tab.ona_all_plants"], "eu.kpis": ["calc.eu_identity", "def.filters", "def.functional", "def.not_running", "render.rp2", "tab.eu_all_plants"], "eu.timeline": ["def.filters", "def.functional", "render.rp2", "tab.eu_monthly", "tab.eu_timeline", "widget.eu_timeline_fns"], "eu.purity": ["def.filters", "def.functional", "render.rp2", "tab.eu_monthly", "tab.eu_timeline", "widget.eu_purity_fns"], "eu.intel": ["calc.eu_identity", "def.filters", "def.functional", "def.not_running", "render.rp2", "tab.eu_all_plants", "tab.eu_timeline", "widget.eu_intel_fns"], "comp.ona.kpis": ["calc.complaint_match", "render.rpC", "tab.plants"], "comp.fc": ["calc.complaint_match", "render.rpC", "tab.plants", "widget.fc_fns"], "comp.eu.kpis": ["calc.complaint_match", "render.rpC", "tab.eu_cross"], "comp.eufc": ["calc.complaint_match", "render.rpC", "tab.eu_cross", "widget.eufc_fns"], "qr.kpis": ["calc.complaint_match", "def.filters", "render.rp3", "tab.plants", "tab.registry"], "qr.funnel": ["calc.complaint_match", "def.filters", "render.rp3", "tab.plants", "tab.registry", "widget.funnel_fns"], "qr.table": ["calc.complaint_match", "def.filters", "render.rp3", "tab.plants"], "datareport": ["calc.complaint_match", "render.rp4", "tab.mapping_report", "tab.plants"]}, "viz_connected": {"ona.kpis": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "ona.timeline": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "qr.funnel", "qr.kpis", "qr.table"], "ona.purity": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "ona.intel": ["eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "eu.kpis": ["eu.intel", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "eu.timeline": ["eu.intel", "eu.kpis", "eu.purity", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "eu.purity": ["eu.intel", "eu.kpis", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "eu.intel": ["eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis", "qr.table"], "comp.ona.kpis": ["comp.eu.kpis", "comp.eufc", "comp.fc", "datareport", "qr.funnel", "qr.kpis", "qr.table"], "comp.fc": ["comp.eu.kpis", "comp.eufc", "comp.ona.kpis", "datareport", "qr.funnel", "qr.kpis", "qr.table"], "comp.eu.kpis": ["comp.eufc", "comp.fc", "comp.ona.kpis", "datareport", "qr.funnel", "qr.kpis", "qr.table"], "comp.eufc": ["comp.eu.kpis", "comp.fc", "comp.ona.kpis", "datareport", "qr.funnel", "qr.kpis", "qr.table"], "qr.kpis": ["comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis", "datareport", "eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.table"], "qr.funnel": ["comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis", "datareport", "eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.kpis", "qr.table"], "qr.table": ["comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis", "datareport", "eu.intel", "eu.kpis", "eu.purity", "eu.timeline", "ona.intel", "ona.kpis", "ona.purity", "ona.timeline", "qr.funnel", "qr.kpis"], "datareport": ["comp.eu.kpis", "comp.eufc", "comp.fc", "comp.ona.kpis", "qr.funnel", "qr.kpis", "qr.table"]}, "viz_links": [{"a": "ona.kpis", "b": "ona.timeline", "via": ["def.filters", "def.functional", "render.rp1"]}, {"a": "ona.kpis", "b": "ona.purity", "via": ["def.filters", "def.functional", "render.rp1"]}, {"a": "ona.kpis", "b": "ona.intel", "via": ["calc.ona_identity", "def.filters", "render.rp1", "tab.ona_all_plants"]}, {"a": "ona.kpis", "b": "eu.kpis", "via": ["def.filters", "def.functional"]}, {"a": "ona.kpis", "b": "eu.timeline", "via": ["def.filters", "def.functional"]}, {"a": "ona.kpis", "b": "eu.purity", "via": ["def.filters", "def.functional"]}, {"a": "ona.kpis", "b": "eu.intel", "via": ["def.filters", "def.functional"]}, {"a": "ona.kpis", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "ona.kpis", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "ona.kpis", "b": "qr.table", "via": ["def.filters"]}, {"a": "ona.timeline", "b": "ona.purity", "via": ["def.filters", "def.functional", "render.rp1", "tab.ona_monthly", "tab.ona_timeline"]}, {"a": "ona.timeline", "b": "ona.intel", "via": ["def.filters", "render.rp1"]}, {"a": "ona.timeline", "b": "eu.kpis", "via": ["def.filters", "def.functional"]}, {"a": "ona.timeline", "b": "eu.timeline", "via": ["def.filters", "def.functional"]}, {"a": "ona.timeline", "b": "eu.purity", "via": ["def.filters", "def.functional"]}, {"a": "ona.timeline", "b": "eu.intel", "via": ["def.filters", "def.functional"]}, {"a": "ona.timeline", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "ona.timeline", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "ona.timeline", "b": "qr.table", "via": ["def.filters"]}, {"a": "ona.purity", "b": "ona.intel", "via": ["def.filters", "render.rp1"]}, {"a": "ona.purity", "b": "eu.kpis", "via": ["def.filters", "def.functional"]}, {"a": "ona.purity", "b": "eu.timeline", "via": ["def.filters", "def.functional"]}, {"a": "ona.purity", "b": "eu.purity", "via": ["def.filters", "def.functional"]}, {"a": "ona.purity", "b": "eu.intel", "via": ["def.filters", "def.functional"]}, {"a": "ona.purity", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "ona.purity", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "ona.purity", "b": "qr.table", "via": ["def.filters"]}, {"a": "ona.intel", "b": "eu.kpis", "via": ["def.filters"]}, {"a": "ona.intel", "b": "eu.timeline", "via": ["def.filters"]}, {"a": "ona.intel", "b": "eu.purity", "via": ["def.filters"]}, {"a": "ona.intel", "b": "eu.intel", "via": ["def.filters"]}, {"a": "ona.intel", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "ona.intel", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "ona.intel", "b": "qr.table", "via": ["def.filters"]}, {"a": "eu.kpis", "b": "eu.timeline", "via": ["def.filters", "def.functional", "render.rp2"]}, {"a": "eu.kpis", "b": "eu.purity", "via": ["def.filters", "def.functional", "render.rp2"]}, {"a": "eu.kpis", "b": "eu.intel", "via": ["calc.eu_identity", "def.filters", "def.functional", "def.not_running", "render.rp2", "tab.eu_all_plants"]}, {"a": "eu.kpis", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "eu.kpis", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "eu.kpis", "b": "qr.table", "via": ["def.filters"]}, {"a": "eu.timeline", "b": "eu.purity", "via": ["def.filters", "def.functional", "render.rp2", "tab.eu_monthly", "tab.eu_timeline"]}, {"a": "eu.timeline", "b": "eu.intel", "via": ["def.filters", "def.functional", "render.rp2", "tab.eu_timeline"]}, {"a": "eu.timeline", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "eu.timeline", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "eu.timeline", "b": "qr.table", "via": ["def.filters"]}, {"a": "eu.purity", "b": "eu.intel", "via": ["def.filters", "def.functional", "render.rp2", "tab.eu_timeline"]}, {"a": "eu.purity", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "eu.purity", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "eu.purity", "b": "qr.table", "via": ["def.filters"]}, {"a": "eu.intel", "b": "qr.kpis", "via": ["def.filters"]}, {"a": "eu.intel", "b": "qr.funnel", "via": ["def.filters"]}, {"a": "eu.intel", "b": "qr.table", "via": ["def.filters"]}, {"a": "comp.ona.kpis", "b": "comp.fc", "via": ["calc.complaint_match", "render.rpC", "tab.plants"]}, {"a": "comp.ona.kpis", "b": "comp.eu.kpis", "via": ["calc.complaint_match", "render.rpC"]}, {"a": "comp.ona.kpis", "b": "comp.eufc", "via": ["calc.complaint_match", "render.rpC"]}, {"a": "comp.ona.kpis", "b": "qr.kpis", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.ona.kpis", "b": "qr.funnel", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.ona.kpis", "b": "qr.table", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.ona.kpis", "b": "datareport", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.fc", "b": "comp.eu.kpis", "via": ["calc.complaint_match", "render.rpC"]}, {"a": "comp.fc", "b": "comp.eufc", "via": ["calc.complaint_match", "render.rpC"]}, {"a": "comp.fc", "b": "qr.kpis", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.fc", "b": "qr.funnel", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.fc", "b": "qr.table", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.fc", "b": "datareport", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "comp.eu.kpis", "b": "comp.eufc", "via": ["calc.complaint_match", "render.rpC", "tab.eu_cross"]}, {"a": "comp.eu.kpis", "b": "qr.kpis", "via": ["calc.complaint_match"]}, {"a": "comp.eu.kpis", "b": "qr.funnel", "via": ["calc.complaint_match"]}, {"a": "comp.eu.kpis", "b": "qr.table", "via": ["calc.complaint_match"]}, {"a": "comp.eu.kpis", "b": "datareport", "via": ["calc.complaint_match"]}, {"a": "comp.eufc", "b": "qr.kpis", "via": ["calc.complaint_match"]}, {"a": "comp.eufc", "b": "qr.funnel", "via": ["calc.complaint_match"]}, {"a": "comp.eufc", "b": "qr.table", "via": ["calc.complaint_match"]}, {"a": "comp.eufc", "b": "datareport", "via": ["calc.complaint_match"]}, {"a": "qr.kpis", "b": "qr.funnel", "via": ["calc.complaint_match", "def.filters", "render.rp3", "tab.plants", "tab.registry"]}, {"a": "qr.kpis", "b": "qr.table", "via": ["calc.complaint_match", "def.filters", "render.rp3", "tab.plants"]}, {"a": "qr.kpis", "b": "datareport", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "qr.funnel", "b": "qr.table", "via": ["calc.complaint_match", "def.filters", "render.rp3", "tab.plants"]}, {"a": "qr.funnel", "b": "datareport", "via": ["calc.complaint_match", "tab.plants"]}, {"a": "qr.table", "b": "datareport", "via": ["calc.complaint_match", "tab.plants"]}]};
+const PAGES = ["ONA Mockdrill","EU Mockdrill","Complaints Status","QR Code Coverage","Data Report"];
+const PCOL = {"ONA Mockdrill":"#1D9E75","EU Mockdrill":"#378ADD","Complaints Status":"#BA7517",
+              "QR Code Coverage":"#7F77DD","Data Report":"#64748b"};
+const NS="http://www.w3.org/2000/svg";
+const svg=document.getElementById("svg"), tip=document.getElementById("tip"), banner=document.getElementById("banner");
+let mode="full", pos={}, sel=null;
+
+function layerOf(id){
+  if(id in DATA.visualizations) return 3;
+  if(id.indexOf("tab.")===0) return 1;
+  if(id.indexOf("render.")===0||id.indexOf("widget.")===0) return 2;
+  return 0; // calc.* def.*
+}
+function labelOf(id){ return (id in DATA.visualizations) ? DATA.visualizations[id].title : id; }
+function isViz(id){ return id in DATA.visualizations; }
+function mk(tag,at){ const e=document.createElementNS(NS,tag); for(const k in at) e.setAttribute(k,at[k]); return e; }
+
+const W=258, H=22, VG=7;
+function layout(){
+  pos={};
+  if(mode==="full"){
+    const XCOL=[24,310,640,980], lab=["DERIVE CALCS / DEFS","DATA TABS / GLOBALS","RENDER / WIDGET FNS","VISUALISATIONS"];
+    const layers=[[],[],[],[]];
+    Object.keys(DATA.symbols).forEach(id=>layers[layerOf(id)].push(id));
+    // layer 3 (viz) grouped by page
+    const vizByPage={}; Object.keys(DATA.visualizations).forEach(id=>{
+      const p=DATA.visualizations[id].page; (vizByPage[p]=vizByPage[p]||[]).push(id); });
+    layers.forEach(a=>a.sort());
+    let maxY=0;
+    for(let L=0;L<3;L++){ let y=46; layers[L].forEach(id=>{ pos[id]={x:XCOL[L],y:y}; y+=H+VG; }); maxY=Math.max(maxY,y); }
+    let y=46;
+    PAGES.forEach(p=>{ const list=(vizByPage[p]||[]).sort(); if(!list.length) return;
+      pos["__pg__"+p]={x:XCOL[3],y:y,page:p,header:true}; y+=20;
+      list.forEach(id=>{ pos[id]={x:XCOL[3],y:y}; y+=H+VG; }); y+=8; });
+    maxY=Math.max(maxY,y);
+    svg.setAttribute("viewBox",`0 0 ${XCOL[3]+W+30} ${maxY+20}`);
+    svg.setAttribute("width",XCOL[3]+W+30); svg.setAttribute("height",maxY+20);
+    window.__layerlbls=lab.map((t,i)=>({x:XCOL[i],t}));
+  } else {
+    // viz-only: one column per page
+    const cols=PAGES.length, GAPX=(258+40);
+    let maxY=0;
+    PAGES.forEach((p,ci)=>{ let y=60; Object.keys(DATA.visualizations).filter(id=>DATA.visualizations[id].page===p).sort()
+        .forEach(id=>{ pos[id]={x:24+ci*GAPX,y:y}; y+=H+VG+10; }); maxY=Math.max(maxY,y);
+        pos["__pg__"+p]={x:24+ci*GAPX,y:34,page:p,header:true}; });
+    svg.setAttribute("viewBox",`0 0 ${24+cols*GAPX+30} ${maxY+20}`);
+    svg.setAttribute("width",24+cols*GAPX+30); svg.setAttribute("height",maxY+20);
+    window.__layerlbls=[];
+  }
+}
+function edgesFor(){
+  const E=[];
+  if(mode==="full"){
+    for(const s in DATA.symbols){ const o=DATA.symbols[s];
+      (o.feeds||[]).forEach(f=>{ if(pos[f]) E.push([s,f]); });
+      (o.affects||[]).forEach(v=>{ if(pos[v]) E.push([s,v]); }); }
+  } else {
+    DATA.viz_links.forEach(l=>{ if(pos[l.a]&&pos[l.b]) E.push([l.a,l.b,l.via]); });
+  }
+  return E;
+}
+function path(a,b){ const A=pos[a],B=pos[b]; const x1=A.x+W,y1=A.y+H/2,x2=B.x,y2=B.y+H/2;
+  const mx=(x1+x2)/2; return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`; }
+function vpath(a,b){ const A=pos[a],B=pos[b]; const x1=A.x+W/2,y1=A.y+H,x2=B.x+W/2,y2=B.y;
+  const my=(y1+y2)/2; return `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`; }
+
+let EDGES=[];
+function draw(){
+  layout(); EDGES=edgesFor(); svg.innerHTML="";
+  (window.__layerlbls||[]).forEach(L=> svg.appendChild(txt(L.x,30,L.t,"layerlbl")));
+  const eg=mk("g",{}); svg.appendChild(eg);
+  EDGES.forEach((e,i)=>{ const p=mk("path",{class:"edge",d: mode==="full"?path(e[0],e[1]):vpath(e[0],e[1])});
+    p.dataset.a=e[0]; p.dataset.b=e[1]; eg.appendChild(p); });
+  for(const id in pos){ const P=pos[id];
+    if(P.header){ const t=txt(P.x, P.y+12, P.page, "pagelbl"); t.setAttribute("fill",PCOL[P.page]||"#333"); svg.appendChild(t); continue; }
+    const g=mk("g",{class:"node"}); g.dataset.id=id;
+    const viz=isViz(id);
+    const fill = viz ? (PCOL[DATA.visualizations[id].page]||"#94a3b8") : "#e5e9f0";
+    const r=mk("rect",{x:P.x,y:P.y,width:W,height:H,fill:fill, "fill-opacity": viz?0.92:1});
+    const t=txt(P.x+8, P.y+H/2, clip(labelOf(id)), null); t.setAttribute("fill", viz?"#fff":"#1a1a2e");
+    g.appendChild(r); g.appendChild(t);
+    g.addEventListener("mouseenter",ev=>showTip(ev,id));
+    g.addEventListener("mousemove",ev=>moveTip(ev));
+    g.addEventListener("mouseleave",()=>{tip.style.display="none";});
+    g.addEventListener("click",ev=>{ev.stopPropagation(); select(id);});
+    svg.appendChild(g);
+  }
+  applyHighlight();
+}
+function txt(x,y,s,cls){ const t=mk("text",{x:x,y:y}); if(cls)t.setAttribute("class",cls); t.textContent=s; return t; }
+function clip(s){ return s.length>34? s.slice(0,33)+"…": s; }
+
+function neighborsOf(id){
+  // set of node ids to highlight when 'id' is selected
+  if(isViz(id)){
+    const set=new Set([id]);
+    (DATA.viz_upstream[id]||[]).forEach(s=>set.add(s));
+    (DATA.viz_connected[id]||[]).forEach(v=>set.add(v));
+    return set;
+  }
+  return new Set(DATA.symbol_downstream[id]||[id]);
+}
+function select(id){ sel=id; applyHighlight(); setBanner(id); }
+function reset(){ sel=null; applyHighlight(); banner.textContent="Nothing selected."; }
+function applyHighlight(){
+  const set= sel? neighborsOf(sel): null;
+  svg.querySelectorAll(".node").forEach(g=>{
+    const id=g.dataset.id;
+    g.classList.remove("dim","hot");
+    if(set){ if(set.has(id)) g.classList.add("hot"); else g.classList.add("dim"); }
+  });
+  svg.querySelectorAll(".edge").forEach(p=>{
+    p.classList.remove("dim","hot");
+    if(set){ if(set.has(p.dataset.a)&&set.has(p.dataset.b)) p.classList.add("hot"); else p.classList.add("dim"); }
+  });
+}
+function setBanner(id){
+  if(isViz(id)){
+    const up=(DATA.viz_upstream[id]||[]), conn=(DATA.viz_connected[id]||[]);
+    banner.innerHTML = `<b>${DATA.visualizations[id].title}</b> — depends on ${up.length} calc/tab/render; `+
+      `shares logic with <b>${conn.length}</b> other visualisation(s).`;
+  } else {
+    const o=DATA.symbols[id]; const vz=(DATA.symbol_viz[id]||[]);
+    const rd=o.reDerive? ` <span class="redr">[needs runDerive()]</span>`:"";
+    banner.innerHTML = `Changing <b>${id}</b> affects <b>${vz.length}</b> visualisation(s).${rd}`;
+  }
+}
+function showTip(ev,id){
+  let h="";
+  if(isViz(id)){ const v=DATA.visualizations[id];
+    h=`<b>${v.title}</b><br><span class="k">page</span> ${v.page}<br><span class="k">render</span> ${v.render} → #${v.container}`+
+      `<br><span class="k">depends on</span> ${(DATA.viz_upstream[id]||[]).join(", ")||"—"}`;
+  } else { const o=DATA.symbols[id];
+    h=`<b>${id}</b>${o.reDerive?' <span class="redr">[runDerive]</span>':''}<br>${o.desc}`+
+      `<br><span class="k">affects</span> ${(DATA.symbol_viz[id]||[]).map(v=>DATA.visualizations[v].title).join(", ")||"—"}`;
+  }
+  tip.innerHTML=h; tip.style.display="block"; moveTip(ev);
+}
+function moveTip(ev){ const pad=14; let x=ev.clientX+pad,y=ev.clientY+pad;
+  if(x+350>innerWidth)x=ev.clientX-360; if(y+120>innerHeight)y=ev.clientY-120; tip.style.left=x+"px"; tip.style.top=y+"px"; }
+function setMode(m){ mode=m; sel=null; banner.textContent="Nothing selected.";
+  document.getElementById("m-full").classList.toggle("active",m==="full");
+  document.getElementById("m-viz").classList.toggle("active",m==="viz"); draw(); }
+svg.addEventListener("click",()=>reset());
+draw();
+</script></body></html>
