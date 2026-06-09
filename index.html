@@ -1332,6 +1332,7 @@ async function loadDashboard() {
     }
 
     initDashboard_();
+    runDebugOverlay_();   // ?debug=1 → floating invariant-check panel
 
   } catch (err) {
     if (overlay) overlay.innerHTML =
@@ -1979,6 +1980,91 @@ const DEFS = {
   notRunningByPurity: function(p){ return !!p.nr; },
   notRunningByHours:  function(p){ return p.epr === 0; },
 };
+
+/* ===================== INVARIANT CHECKS (Phase 4) =====================
+   Structural assertions over the loaded data — they guard the assumptions every
+   widget relies on (canonical plant_uid present + unique, monthly/timeline uids
+   resolvable, KPI arithmetic consistent, date spans derived). Run automatically
+   when the URL has ?debug=1, or any time from the console via runChecks().
+   Each check returns {name, ok, detail}.                                        */
+function runChecks() {
+  const out = [];
+  const add = function(name, ok, detail){ out.push({ name: name, ok: !!ok, detail: detail || '' }); };
+  const dups = function(arr){ const seen={}, d=[]; arr.forEach(function(u){ if(!u) return; if(seen[u]) d.push(u); else seen[u]=1; }); return d; };
+
+  // 1. plant_uid present on every plant row (the canonical identity)
+  const onaNoUid = ONA_ALL_PLANTS.filter(function(p){ return !p.uid; }).length;
+  add('ONA plants carry plant_uid', onaNoUid === 0, onaNoUid ? onaNoUid + ' of ' + ONA_ALL_PLANTS.length + ' missing uid' : ONA_ALL_PLANTS.length + ' plants');
+  const euNoUid = EU_ALL_PLANTS.filter(function(p){ return !p.uid; }).length;
+  add('EU plants carry plant_uid', euNoUid === 0, euNoUid ? euNoUid + ' of ' + EU_ALL_PLANTS.length + ' missing uid' : EU_ALL_PLANTS.length + ' plants');
+
+  // 2. plant_uid unique within each plant list (it keys the dropdown + every filter)
+  const onaDup = dups(ONA_ALL_PLANTS.map(function(p){ return p.uid; }));
+  add('ONA plant_uid unique', onaDup.length === 0, onaDup.length ? onaDup.length + ' duplicate uid(s)' : 'all unique');
+  const euDup = dups(EU_ALL_PLANTS.map(function(p){ return p.uid; }));
+  add('EU plant_uid unique', euDup.length === 0, euDup.length ? euDup.length + ' duplicate uid(s)' : 'all unique');
+
+  // 3. monthly-aggregate uids resolve back to a known plant
+  const onaUidSet = new Set(ONA_ALL_PLANTS.map(function(p){ return p.uid; }));
+  const onaOrphan = ONA_MONTHLY_ALL.filter(function(r){ return r.uid && !onaUidSet.has(r.uid); }).length;
+  add('ONA monthly uids resolve', onaOrphan === 0, onaOrphan ? onaOrphan + ' month rows w/ unknown uid' : ONA_MONTHLY_ALL.length + ' month rows');
+  const euUidSet = new Set(EU_ALL_PLANTS.map(function(p){ return p.uid; }));
+  const euOrphan = EU_MONTHLY_ALL.filter(function(r){ return r.uid && !euUidSet.has(r.uid); }).length;
+  add('EU monthly uids resolve', euOrphan === 0, euOrphan ? euOrphan + ' month rows w/ unknown uid' : EU_MONTHLY_ALL.length + ' month rows');
+
+  // 4. per-plant timelines keyed by a non-empty uid
+  const tlBad = Object.keys(TL.history).filter(function(k){ return !k; }).length;
+  add('ONA timeline keyed by uid', tlBad === 0, Object.keys(TL.history).length + ' plant histories');
+  const tl2Bad = Object.keys(TL2.history).filter(function(k){ return !k; }).length;
+  add('EU timeline keyed by uid', tl2Bad === 0, Object.keys(TL2.history).length + ' plant histories');
+
+  // 5. KPI arithmetic — functional + non-functional never exceeds the population
+  const onaF = ONA_ALL_PLANTS.filter(function(p){ return DEFS.onaFunctional(p.os); }).length;
+  const onaN = ONA_ALL_PLANTS.filter(function(p){ return p.os === 'Not-Functional'; }).length;
+  add('ONA func+nonfunc <= reporting', onaF + onaN <= ONA_ALL_PLANTS.length, onaF + ' func + ' + onaN + ' nf of ' + ONA_ALL_PLANTS.length);
+  const euF = EU_ALL_PLANTS.filter(function(p){ return DEFS.euFunctional(p.es); }).length;
+  const euNF = EU_ALL_PLANTS.filter(function(p){ return DEFS.euNonFunctional(p.es); }).length;
+  add('EU func+nonfunc <= total', euF + euNF <= EU_ALL_PLANTS.length, euF + ' func + ' + euNF + ' nf of ' + EU_ALL_PLANTS.length);
+
+  // 6. dynamic date spans derived (labels + filter min/max depend on these)
+  add('ONA drill range derived', !!window.ONA_RANGE, window.ONA_RANGE || 'missing');
+  add('EU drill range derived',  !!window.EU_RANGE,  window.EU_RANGE  || 'missing');
+
+  return out;
+}
+window.runChecks = runChecks;   // callable from the console any time
+
+/* Floating diagnostics panel — only when ?debug=1 is in the URL. */
+function runDebugOverlay_() {
+  if (!/[?&]debug=1\b/.test(location.search)) return;
+  let checks;
+  try { checks = runChecks(); }
+  catch (e) { checks = [{ name: 'runChecks() threw', ok: false, detail: String(e && e.message || e) }]; }
+  const fails = checks.filter(function(c){ return !c.ok; }).length;
+
+  // Console mirror
+  console.log('%c[debug] invariant checks: ' + (checks.length - fails) + '/' + checks.length + ' passed',
+    'font-weight:700;color:' + (fails ? '#c0392b' : '#1D9E75'));
+  checks.forEach(function(c){ console.log((c.ok ? '  ok  ' : ' FAIL ') + c.name + (c.detail ? ' — ' + c.detail : '')); });
+
+  const rows = checks.map(function(c){
+    return '<div style="display:flex;gap:7px;align-items:baseline;padding:2px 0">'
+      + '<span style="color:' + (c.ok ? '#1D9E75' : '#E24B4A') + ';font-weight:700;width:12px">' + (c.ok ? '✓' : '✗') + '</span>'
+      + '<span style="flex:1">' + c.name + (c.detail ? ' <span style="color:#888">— ' + c.detail + '</span>' : '') + '</span></div>';
+  }).join('');
+
+  let el = document.getElementById('psa-debug-overlay');
+  if (!el) { el = document.createElement('div'); el.id = 'psa-debug-overlay'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;bottom:14px;right:14px;z-index:99999;width:360px;max-height:60vh;overflow:auto;'
+    + 'background:#fff;border:1px solid ' + (fails ? '#E24B4A' : '#1D9E75') + ';border-radius:8px;'
+    + 'box-shadow:0 6px 24px rgba(0,0,0,0.18);font:12px/1.45 system-ui,sans-serif;color:#222;padding:0';
+  el.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;'
+    + 'background:' + (fails ? '#E24B4A' : '#1D9E75') + ';color:#fff;border-radius:7px 7px 0 0">'
+    + '<strong>Invariant checks — ' + (checks.length - fails) + '/' + checks.length + ' passed</strong>'
+    + '<span style="cursor:pointer;font-size:16px;line-height:1" onclick="this.closest(\'#psa-debug-overlay\').remove()">×</span></div>'
+    + '<div style="padding:8px 12px">' + rows + '</div>';
+}
 
 function setPeriod(id, text){ const el=document.getElementById(id); if(el) el.textContent = '⏱ '+text; }
 
