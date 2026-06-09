@@ -1,0 +1,14 @@
+#!/bin/sh
+# PSA dashboard — impact prompt (non-blocking).
+# Prints which visualizations your STAGED changes affect, then lets the commit proceed.
+# Enable once with:   git config core.hooksPath tools/githooks
+# Disable with:       git config --unset core.hooksPath
+
+echo ""
+echo "--- impact analyzer (staged changes) ---"
+( python tools/impact.py --staged 2>/dev/null \
+  || py tools/impact.py --staged 2>/dev/null \
+  || python3 tools/impact.py --staged 2>/dev/null \
+  || echo "  (impact.py not run; ensure Python is on PATH)" )
+echo "-----------------------------------------"
+exit 0
