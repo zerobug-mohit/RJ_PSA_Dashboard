@@ -1093,7 +1093,7 @@ async function loadDashboard() {
     TL2 = { history: {} };
     rowsToObjects(euTLVals).forEach(function(r) {
       const uid = r.plant_uid || String(r.code);   // fallback to code if uid column absent (pre-rederive)
-      if (!TL2.history[uid]) TL2.history[uid] = { uid: uid, code: String(r.code), di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, h: [] };
+      if (!TL2.history[uid]) TL2.history[uid] = { uid: uid, code: String(r.code), di: r.district, fa: r.facility, ca: r.capacity !== '' ? +r.capacity : null, mf: r.manufacturer || '', h: [] };
       TL2.history[uid].h.push({
         d: normDate_(r.date),
         p: r.purity !== '' ? +r.purity : null,
@@ -1109,6 +1109,7 @@ async function loadDashboard() {
         dd:   r.district  || '',
         sf:   r.hospital  || '',
         co:   r.capacity  !== '' ? +r.capacity : null,
+        mfr:  r.manufacturer || '',
         es:   r.latest_status  || '',
         ep:   r.latest_purity  !== '' ? +r.latest_purity  : null,
         epr:  r.latest_hours   !== '' ? +r.latest_hours   : null,
@@ -1270,7 +1271,7 @@ async function loadDashboard() {
     DISTRICTS_BY_PAGE['2'] = [...new Set(EU_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
     PLANTS_BY_PAGE['2'] = dedupByVal_(EU_ALL_PLANTS
       .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:((a.sf||'')<(b.sf||'')?-1:1); })
-      .map(function(p){ return { val:p.uid, label:((p.sf||'')+(p.co!=null?' · '+p.co+' LPM':'')).slice(0,42), dist:p.dd, cap:p.co, code:null }; }));
+      .map(function(p){ return { val:p.uid, label:((p.sf||'')+(p.co!=null?' · '+p.co+' LPM':'')+(p.mfr?' · '+p.mfr.replace(/\b\w/g,function(c){return c.toUpperCase();}):'')).slice(0,60), dist:p.dd, cap:p.co, code:null }; }));
 
     // Page 3 (Registry): districts and plants from REGISTRY_ALL
     DISTRICTS_BY_PAGE['3'] = [...new Set(REGISTRY_ALL.map(function(p){return p.dd;}).filter(Boolean))].sort();
@@ -3530,6 +3531,7 @@ function _euIntelRenderDetail(body, ps) {
       + '<td style="font-size:11px">' + p.dd + '</td>'
       + '<td>' + (p.sf||p.of) + '</td>'
       + '<td style="font-size:11px;text-align:center">' + (p.co||p.cs||'—') + '</td>'
+      + '<td style="font-size:11px">' + (p.mfr ? p.mfr.replace(/\b\w/g,function(c){return c.toUpperCase();}) : '—') + '</td>'
       + '<td>' + badge(p.es||'—', euCls) + '</td>'
       + '<td style="text-align:center">' + purTxt + '</td>'
       + '<td style="font-size:11px;text-align:center">' + hrsTxt + '</td>'
@@ -3544,11 +3546,11 @@ function _euIntelRenderDetail(body, ps) {
     + filtered.length + ' plants — click any row to view EU purity trend</div>'
     + '<div class="tbl-wrap" style="max-height:360px;overflow-y:auto">'
     + '<table class="tbl"><thead><tr>'
-    + '<th>District</th><th>Facility</th><th>LPM</th><th>EU Status</th>'
+    + '<th>District</th><th>Facility</th><th>LPM</th><th>Manufacturer</th><th>EU Status</th>'
     + '<th>EU Purity</th><th>Running Hrs</th><th>Leakage</th>'
     + '<th>Fire Safety</th><th>Last Drill</th>'
     + '</tr></thead><tbody>'
-    + (rows || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
+    + (rows || '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
     + '</tbody></table></div>';
   autoPaginate_(body);
 }
@@ -3567,7 +3569,7 @@ function euPlantByUID_(uid){
     var reads = (e.h||[]).slice().sort(function(a,b){ return (a.d||'') < (b.d||'') ? -1 : 1; });
     var latest = reads.length ? reads[reads.length-1] : null;
     return {
-      c: uid, uid: uid, code: e.code, dd: e.di, sf: e.fa, of: e.fa, co: e.ca, cs: e.ca,
+      c: uid, uid: uid, code: e.code, dd: e.di, sf: e.fa, of: e.fa, co: e.ca, cs: e.ca, mfr: e.mf || '',
       ep: (latest && latest.p != null) ? latest.p : null,
       ed: latest ? latest.d : null,
       es: latest ? (latest.es || (latest.s===1 ? 'Functional' : 'Non Functional Repairable')) : '',
@@ -3798,7 +3800,7 @@ function eutlDrawMonth(ym){
     drills.sort(function(a,b){ return a.d>b.d?-1:1; });
     var latest=drills[0];
     var es=latest.es || (latest.s===1?'Functional':'Non Functional Repairable');
-    list.push({ uid:uid, code:e.code, dd:e.di, fa:e.fa, ca:e.ca, es:es, ep:latest.p, n:drills.length });
+    list.push({ uid:uid, code:e.code, dd:e.di, fa:e.fa, ca:e.ca, mfr:e.mf, es:es, ep:latest.p, n:drills.length });
   });
   list.sort(function(a,b){ return (ord[a.es]||0)-(ord[b.es]||0)||(a.dd>b.dd?1:-1); });
   if(!list.length){container.innerHTML='<div style="padding:20px;color:var(--muted);font-size:12px">No drills this month.</div>';return;}
@@ -3808,9 +3810,10 @@ function eutlDrawMonth(ym){
     const pur=p.ep&&p.ep<=100&&p.ep>0?`${p.ep}%`:'—';
     const tip=`${p.es}${p.ep?' | Purity: '+p.ep+'%':''}`;
     const dot=`<span title="${tip}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${clr};margin-right:3px;cursor:default;vertical-align:middle"></span>`;
-    rows+=`<tr style="cursor:pointer" onclick="eutlClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)}</td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td><span style="background:${clr};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${p.es||'—'}</span></td> <td style="font-size:11px;text-align:center">${pur}</td> <td style="font-size:11px;text-align:center">${p.n}</td> <td>${dot}</td></tr>`;
+    const mfrTxt=p.mfr?p.mfr.replace(/\b\w/g,ch=>ch.toUpperCase()):'—';
+    rows+=`<tr style="cursor:pointer" onclick="eutlClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)}</td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td style="font-size:11px">${mfrTxt}</td> <td><span style="background:${clr};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${p.es||'—'}</span></td> <td style="font-size:11px;text-align:center">${pur}</td> <td style="font-size:11px;text-align:center">${p.n}</td> <td>${dot}</td></tr>`;
   });
-  container.innerHTML=`<div style="overflow-x:auto"> <table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Status</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Purity</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Drills</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Drill dots (hover for detail)</th> </tr></thead> <tbody>${rows}</tbody> </table> </div>`;
+  container.innerHTML=`<div style="overflow-x:auto"> <table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Manufacturer</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Status</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Purity</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Drills</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Drill dots (hover for detail)</th> </tr></thead> <tbody>${rows}</tbody> </table> </div>`;
   autoPaginate_('eutl-container');
 }
 function eutlClickPlant(uid){
@@ -3836,7 +3839,7 @@ function eutlDrawPlant(p){
   const chips=`
     <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;background:var(--bg);border-radius:8px;padding:10px 14px">
       <span class="badge" style="background:${lblc};color:#fff">${p.es||'—'}</span>
-      <span style="font-size:11px;color:var(--muted)">${p.sf||p.of||''} · ${p.dd} · ${p.co||'—'} LPM</span>
+      <span style="font-size:11px;color:var(--muted)">${p.sf||p.of||''} · ${p.dd} · ${p.co||'—'} LPM${p.mfr?' · '+p.mfr.replace(/\b\w/g,function(c){return c.toUpperCase();}):''}</span>
       <span style="font-size:11px;color:var(--muted)">Latest purity: <b style="color:${purClr}">${p.ep?p.ep+'%':'—'}</b></span>
       <span style="font-size:11px;color:var(--muted)">${reads.length} drill${reads.length!==1?'s':''}</span>
       ${p.el?'<span style="font-size:11px;color:#E24B4A">Leak reported</span>':''}
@@ -4284,18 +4287,19 @@ function pur2DrawMonth(ym){
     });
     if(!drills.length) return;
     drills.sort(function(a,b){ return a.d>b.d?-1:1; });
-    list.push({ uid:uid, code:e.code, dd:e.di, fa:e.fa, ca:e.ca, ep:drills[0].p });
+    list.push({ uid:uid, code:e.code, dd:e.di, fa:e.fa, ca:e.ca, mfr:e.mf, ep:drills[0].p });
   });
   if(!list.length){container.innerHTML='<div style="padding:20px;color:var(--muted);font-size:12px">No purity data for this month.</div>';return;}
   list.sort(function(a,b){ return (a.ep||0)-(b.ep||0); });
   let rows='';
   list.forEach(function(p){
     const col=pur2Color(p.ep);
-    rows+=`<tr style="cursor:pointer" onclick="pur2ClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)}</td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td style="font-size:13px;font-weight:600;color:${col};text-align:center">${p.ep}%</td></tr>`;
+    const mfrTxt=p.mfr?p.mfr.replace(/\b\w/g,ch=>ch.toUpperCase()):'—';
+    rows+=`<tr style="cursor:pointer" onclick="pur2ClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)}</td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td style="font-size:11px">${mfrTxt}</td> <td style="font-size:13px;font-weight:600;color:${col};text-align:center">${p.ep}%</td></tr>`;
   });
   const avgV=list.reduce((s,p)=>s+(p.ep||0),0)/list.length;
   container.innerHTML=`
-    <div style="font-size:11px;color:var(--muted);margin:8px 0 10px">${list.length} plants · avg <b style="color:${pur2Color(avgV)}">${avgV.toFixed(1)}%</b> · click a row for the plant's purity trend</div> <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">EU Purity</th> </tr></thead><tbody>${rows}</tbody></table></div>`;
+    <div style="font-size:11px;color:var(--muted);margin:8px 0 10px">${list.length} plants · avg <b style="color:${pur2Color(avgV)}">${avgV.toFixed(1)}%</b> · click a row for the plant's purity trend</div> <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Manufacturer</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">EU Purity</th> </tr></thead><tbody>${rows}</tbody></table></div>`;
   autoPaginate_('pur2-container');
 }
 function pur2ClickPlant(uid){
@@ -4331,6 +4335,7 @@ function pur2DrawPlant(p){
     ${purStatChip('Avg (all drills)', `<span style="color:${pur2Color(+avgP)}">${avgP}%</span>`, allVals.length+' readings')}
     ${purStatChip('Range', allVals.length?`${minP}% – ${maxP}%`:'—', 'min – max')}
     ${purStatChip('Capacity', p.co||'—', 'LPM')}
+    ${purStatChip('Manufacturer', p.mfr ? p.mfr.replace(/\b\w/g,ch=>ch.toUpperCase()) : '—', 'as reported in EU')}
     ${purStatChip('EU status', `<span style="color:${DEFS.euStatusColor(p.es)}">${p.es||'—'}</span>`, 'latest drill')}
   </div>`;
 

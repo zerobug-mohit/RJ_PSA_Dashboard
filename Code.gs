@@ -730,11 +730,11 @@ function deriveDashboard() {
   euParsed.forEach(function(d) {
     var key = euUID(d);
     if (!euAllByIdent[key]) {
-      euAllByIdent[key] = { uid: key, drills: [], distDisplay: districtDisplay(d.distNorm), hosp: d.hospNorm, cap: d.cap };
+      euAllByIdent[key] = { uid: key, drills: [], distDisplay: districtDisplay(d.distNorm), hosp: d.hospNorm, cap: d.cap, mfr: d.mfr || '' };
     }
     euAllByIdent[key].drills.push(d);
   });
-  const euAllPlantsHeaders = ['plant_uid','district','hospital','capacity','latest_status','latest_purity','latest_hours','latest_date','eu_leakage','eu_fire_safety','drill_count','latest_not_running'];
+  const euAllPlantsHeaders = ['plant_uid','district','hospital','capacity','manufacturer','latest_status','latest_purity','latest_hours','latest_date','eu_leakage','eu_fire_safety','drill_count','latest_not_running'];
   const euAllPlantsRows = Object.values(euAllByIdent).map(function(g) {
     var sorted = g.drills.filter(function(d){ return d.date; }).sort(function(a,b){ return a.date > b.date ? -1 : 1; });
     var latest = sorted[0] || g.drills[0];
@@ -743,6 +743,7 @@ function deriveDashboard() {
       g.distDisplay,
       g.hosp,
       g.cap != null ? g.cap : '',
+      g.mfr || '',   // manufacturer (part of the EU plant key, so one value per plant)
       latest ? latest.es  : '',
       latest && latest.ep  != null ? Number(latest.ep).toFixed(1)  : '',
       latest && latest.epr != null ? Number(latest.epr).toFixed(1) : '',
@@ -1256,6 +1257,7 @@ function deriveDashboard() {
         cm ? cm.dd : '',
         cm ? cm.sf : '',
         cm ? (cm.cs != null ? cm.cs : '') : '',
+        d.mfr || '',
         d.ed,
         d.ep != null ? Number(d.ep).toFixed(2) : '',
         (d.es === 'Functional' || d.es === 'Functional Installed') ? 1 : 0,
@@ -1280,6 +1282,7 @@ function deriveDashboard() {
       districtDisplay(d.distNorm),
       d.hospNorm,
       d.cap != null ? d.cap : '',
+      d.mfr || '',
       d.ed,
       d.ep != null ? Number(d.ep).toFixed(2) : '',
       (d.es === 'Functional' || d.es === 'Functional Installed') ? 1 : 0,
@@ -1287,7 +1290,7 @@ function deriveDashboard() {
     ]);
   });
 
-  const euTimelineHeaders = ['code','plant_uid','district','facility','capacity','date','purity','status','eq_status'];
+  const euTimelineHeaders = ['code','plant_uid','district','facility','capacity','manufacturer','date','purity','status','eq_status'];
 
   // ------------------------------------------------------------------
   // BUILD dist_p1 ROWS  (§5.3)
