@@ -112,7 +112,8 @@ function euUID(d) {
 }
 // ONA drill identity = district + facility + capacity (LPM).
 function onaUID(d) {
-  return d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '');
+  // Unique ONA plant = District · Facility · LPM · Manufacturer (mirrors the EU euUID).
+  return d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '') + '|' + (d.mfr || '');
 }
 
 function fromExcel(serial) {
@@ -524,17 +525,17 @@ function deriveDashboard() {
   // BUILD ona_all_plants  (ALL ONA drills — not limited to 441 matched)
   // Groups by unique district+facility+lpm identity; keeps latest drill.
   // ------------------------------------------------------------------
-  const onaAllByIdent = {}; // "distNorm|facNorm|lpm" → {drills[], distDisplay, osc, lpm}
+  const onaAllByIdent = {}; // "distNorm|facNorm|lpm|mfr" → {drills[], distDisplay, osc, lpm, mfr}
   onaParsed.forEach(function(d) {
     const key = onaUID(d);
     if (!onaAllByIdent[key]) {
-      onaAllByIdent[key] = { uid: key, drills: [], distDisplay: districtDisplay(d.distNorm), osc: d.osc, lpm: d.lpm, facNorm: d.facNorm };
+      onaAllByIdent[key] = { uid: key, drills: [], distDisplay: districtDisplay(d.distNorm), osc: d.osc, lpm: d.lpm, facNorm: d.facNorm, mfr: d.mfr || '' };
     }
     onaAllByIdent[key].drills.push(d);
     if (!onaAllByIdent[key].osc && d.osc) onaAllByIdent[key].osc = d.osc;
   });
 
-  const onaAllPlantsHeaders = ['plant_uid','district','facility','scheme','capacity','latest_status','latest_purity','latest_date','nf_reason','drill_count'];
+  const onaAllPlantsHeaders = ['plant_uid','district','facility','scheme','capacity','manufacturer','latest_status','latest_purity','latest_date','nf_reason','drill_count'];
   const onaAllPlantsRows = Object.values(onaAllByIdent).map(function(g) {
     var sorted = g.drills.filter(function(d){return d.date;}).sort(function(a,b){return a.date > b.date ? -1 : 1;});
     var latest = sorted[0] || g.drills[0];
@@ -544,6 +545,7 @@ function deriveDashboard() {
       g.facNorm,
       g.osc || '',
       g.lpm != null ? g.lpm : '',
+      g.mfr || '',
       latest ? latest.os  : '',
       latest && latest.op != null ? Number(latest.op).toFixed(1) : '',
       latest ? latest.od  : '',
@@ -1198,7 +1200,7 @@ function deriveDashboard() {
         cm ? cm.dd : '',
         cm ? cm.sf : '',
         cm ? (cm.cs != null ? cm.cs : '') : '',
-        (cm && cm.asset && cm.asset.supplier) ? cm.asset.supplier : (d.mfr || ''),
+        d.mfr || '',   // ONA-reported manufacturer — same value that keys the plant_uid
         d.od,
         d.op != null ? Number(d.op).toFixed(2) : '',
         d.os === 'Functional' || d.os === 'Functional Installed' ? 1 : 0,

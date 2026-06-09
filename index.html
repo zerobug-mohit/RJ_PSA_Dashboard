@@ -1221,11 +1221,12 @@ async function loadDashboard() {
     /* --- ONA_ALL_PLANTS: all ONA plant identities (not limited to 441 matched) --- */
     ONA_ALL_PLANTS = rowsToObjects(onaAllVals).map(function(r) {
       return {
-        uid:  r.plant_uid || '',   // canonical ONA plant identity
+        uid:  r.plant_uid || '',   // canonical ONA plant identity (District·Facility·LPM·Manufacturer)
         dd:   r.district  || '',
         sf:   r.facility  || '',   // normalized facility name from ONA
         osc:  r.scheme    || '',
         co:   r.capacity  !== '' ? +r.capacity : null,
+        mfr:  r.manufacturer || '',
         os:   r.latest_status  || '',
         op:   r.latest_purity  !== '' ? +r.latest_purity  : null,
         od:   normDate_(r.latest_date) || null,
@@ -1263,7 +1264,7 @@ async function loadDashboard() {
     DISTRICTS_BY_PAGE['1'] = [...new Set(ONA_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
     PLANTS_BY_PAGE['1'] = dedupByVal_(ONA_ALL_PLANTS
       .slice().sort(function(a,b){ return a.dd<b.dd?-1:a.dd>b.dd?1:((a.sf||'')<(b.sf||'')?-1:1); })
-      .map(function(p){ return { val:p.uid, label:((p.sf||'')+(p.co!=null?' · '+p.co+' LPM':'')).slice(0,42), dist:p.dd, cap:p.co, code:null }; }));
+      .map(function(p){ return { val:p.uid, label:((p.sf||'')+(p.co!=null?' · '+p.co+' LPM':'')+(p.mfr?' · '+p.mfr.replace(/\b\w/g,function(c){return c.toUpperCase();}):'')).slice(0,60), dist:p.dd, cap:p.co, code:null }; }));
 
     // Page 2 (EU): one option per unique plant, keyed by canonical plant_uid.
     DISTRICTS_BY_PAGE['2'] = [...new Set(EU_ALL_PLANTS.map(function(p){return p.dd;}).filter(Boolean))].sort();
@@ -2703,6 +2704,7 @@ function _onaIntelRenderDetail(body, ps) {
       + '<td style="font-size:11px">' + p.dd + '</td>'
       + '<td>' + (p.sf||p.of) + '</td>'
       + '<td style="font-size:11px;text-align:center">' + (p.co||p.cs||'—') + '</td>'
+      + '<td style="font-size:11px">' + (p.mfr ? p.mfr.replace(/\b\w/g,function(c){return c.toUpperCase();}) : '—') + '</td>'
       + '<td style="font-size:10px">' + (p.osc||'—') + '</td>'
       + '<td>' + badge(p.os||'—', p.os==='Functional'?'g':p.os==='Not-Functional'?'r':'gr') + '</td>'
       + '<td style="text-align:center">' + purTxt + '</td>'
@@ -2716,11 +2718,11 @@ function _onaIntelRenderDetail(body, ps) {
     + subtitle + ' — click any row to view purity trend</div>'
     + '<div class="tbl-wrap" style="max-height:360px;overflow-y:auto">'
     + '<table class="tbl"><thead><tr>'
-    + '<th>District</th><th>Facility</th><th>LPM</th><th>Scheme</th>'
+    + '<th>District</th><th>Facility</th><th>LPM</th><th>Manufacturer</th><th>Scheme</th>'
     + '<th>ONA Status</th><th>Purity</th><th>Last Drill</th>'
     + '<th>Non-Functional Reason</th>'
     + '</tr></thead><tbody>'
-    + (rows || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
+    + (rows || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
     + '</tbody></table></div>';
   autoPaginate_(body);
 }
@@ -2914,7 +2916,7 @@ function purDrawMonth(m) {
     const sp = ph.code ? RAW.slim_plants.find(p => String(p.c) === String(ph.code)) : null;
     const comps = sp ? (sp.cl||[]) : [];
     const hasActive = sp && (sp.ha || comps.some(c=>c.status!=='Resolved'));
-    plantReadings.push({ uid, code: ph.code, di: ph.di, fa: ph.fa, ca: ph.ca, avg, readings: monthReads.length, comps: comps.length, hasActive });
+    plantReadings.push({ uid, code: ph.code, di: ph.di, fa: ph.fa, ca: ph.ca, mfr: ph.mf, avg, readings: monthReads.length, comps: comps.length, hasActive });
   }
   plantReadings.sort((a,b) => a.avg - b.avg);
 
@@ -2944,12 +2946,13 @@ function purDrawMonth(m) {
     // Mini sparkline using full history
     const spark = purMiniSparkline(p.uid);
     const codeLbl = (p.code && /^\d+$/.test(String(p.code))) ? `<span style="font-size:10px;color:var(--muted);font-family:monospace">#${p.code}</span>` : '';
-    return `<tr onclick="purClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')" style="cursor:pointer"> <td>${p.di}</td> <td>${p.fa.slice(0,35)} ${codeLbl}</td> <td style="white-space:nowrap">${p.ca}</td> <td>${spark}</td> <td><span style="font-weight:700;color:${c}">${p.avg}%</span></td> <td>${compBadge}${activeBadge}</td> </tr>`;
+    const mfrTxt = p.mfr ? p.mfr.replace(/\b\w/g,ch=>ch.toUpperCase()) : '—';
+    return `<tr onclick="purClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')" style="cursor:pointer"> <td>${p.di}</td> <td>${p.fa.slice(0,35)} ${codeLbl}</td> <td style="white-space:nowrap">${p.ca}</td> <td style="font-size:11px">${mfrTxt}</td> <td>${spark}</td> <td><span style="font-weight:700;color:${c}">${p.avg}%</span></td> <td>${compBadge}${activeBadge}</td> </tr>`;
   }).join('');
 
   document.getElementById('pur-container').innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"> <span style="font-size:11px;color:var(--muted)">${plantReadings.length} plants with data ·</span> ${binPills}
-    </div> <div class="tbl-wrap"><table class="tbl"> <thead><tr><th>District</th><th>Facility</th><th>Capacity</th><th>Trend</th><th>Avg purity</th><th>Complaints</th></tr></thead> <tbody>${rows}</tbody> </table></div>`;
+    </div> <div class="tbl-wrap"><table class="tbl"> <thead><tr><th>District</th><th>Facility</th><th>Capacity</th><th>Manufacturer</th><th>Trend</th><th>Avg purity</th><th>Complaints</th></tr></thead> <tbody>${rows}</tbody> </table></div>`;
   autoPaginate_('pur-container');
 }
 
@@ -3085,6 +3088,7 @@ function purDrawPlant(uid, ph) {
     ${purStatChip('Avg (all drills)', `<span style="color:${purColor(+avgP)}">${avgP}%</span>`, `${allVals.length} readings`)}
     ${purStatChip('Range', `${minP}% – ${maxP}%`, 'min – max')}
     ${purStatChip('Capacity', ph.ca || '—', 'LPM')}
+    ${purStatChip('Manufacturer', ph.mf ? ph.mf.replace(/\b\w/g,ch=>ch.toUpperCase()) : '—', 'as reported in ONA')}
     ${purStatChip('Complaints', comps.length, comps.filter(c=>c.status!=='Resolved').length + ' open')}
   </div>`;
 
