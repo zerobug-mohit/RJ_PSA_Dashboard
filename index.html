@@ -1171,8 +1171,10 @@ async function loadDashboard() {
         ha:   isTruthy(r.has_active_complaint),
         cl:   comps,
         // Reporting derived from EU drills; ONA-only fields stay empty. Use QR as display code.
+        // co mirrors the registry capacity (cs) so widgets that read p.co — funnel drill-down,
+        // eufc tables — show capacity instead of blanks for EU_CROSS plants.
         c: r.qr_suffix || null, os: '', osc: '', op: null, od: null, or_: '',
-        re: _dc > 0, rr: _rr, ds: _ds, dept: '', co: null,
+        re: _dc > 0, rr: _rr, ds: _ds, dept: '', co: (r.capacity !== '' ? +r.capacity : null),
         active_comps: active.length,
       };
     });
