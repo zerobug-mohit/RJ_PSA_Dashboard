@@ -112,8 +112,11 @@ function euUID(d) {
 }
 // ONA drill identity = district + facility + capacity (LPM).
 function onaUID(d) {
-  // Unique ONA plant = District · Facility · LPM · Manufacturer (mirrors the EU euUID).
-  return d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '') + '|' + (d.mfr || '');
+  // Unique ONA plant = District · Facility · LPM. Manufacturer is NOT in the key: the ONA
+  // mock-drill vendor field is too inconsistent (per-drill spelling/spacing variants), so
+  // keying on it split the ~482 real plants into 1174. Manufacturer is shown as a per-plant
+  // attribute (latest reported vendor) instead — see ona_all_plants / ona_timeline.
+  return d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '');
 }
 
 function fromExcel(serial) {
@@ -545,7 +548,7 @@ function deriveDashboard() {
       g.facNorm,
       g.osc || '',
       g.lpm != null ? g.lpm : '',
-      g.mfr || '',
+      (latest && latest.mfr) ? latest.mfr : (g.mfr || ''),   // latest reported vendor (attribute, not key)
       latest ? latest.os  : '',
       latest && latest.op != null ? Number(latest.op).toFixed(1) : '',
       latest ? latest.od  : '',

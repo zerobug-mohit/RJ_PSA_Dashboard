@@ -66,7 +66,7 @@ mangled EU QR).
 | Tab | Columns | Frontend global | Key it's grouped by |
 |---|---|---|---|
 | `plants` | code, district, department, ona_facility, sih_facility, ona_capacity, sih_capacity, ona_status, ona_scheme, ona_purity, ona_drill_date, ona_nf_reason, ona_functional_reason, eu_status, eu_purity, eu_running_hours, eu_drill_date, eu_leakage, eu_fire_safety, qr_suffix, equipment_status, inventory_status, moic_verified_date, has_qr, is_verified, reporting_ever, reporting_recent, days_since_drill, complaint_clean, **complaints** (JSON) | `RAW.slim_plants` | **mapping `code`** (the ~448 matched plants) |
-| `ona_all_plants` | **plant_uid**, district, facility, scheme, capacity, **manufacturer**, latest_status, latest_purity, latest_date, nf_reason, drill_count | `ONA_ALL_PLANTS` | **`plant_uid`** = `district\|facNorm\|lpm\|manufacturer` (`onaUID`; `c:null`) |
+| `ona_all_plants` | **plant_uid**, district, facility, scheme, capacity, **manufacturer**, latest_status, latest_purity, latest_date, nf_reason, drill_count | `ONA_ALL_PLANTS` | **`plant_uid`** = `district\|facNorm\|lpm` (`onaUID`; `c:null`). `manufacturer` is a displayed attribute (latest reported vendor), not part of the key. |
 | `ona_monthly_all` | month, **plant_uid**, district, **facility**, total, functional, not_functional, avg_purity | `ONA_MONTHLY_ALL` | `month\|plant_uid` |
 | `ona_timeline` | code, **plant_uid**, district, facility, capacity, date, purity, status | `TL.history` | **keyed by `plant_uid`** (entry keeps `code`) |
 | `eu_all_plants` | **plant_uid**, district, hospital, capacity, latest_status, latest_purity, latest_hours, latest_date, eu_leakage, eu_fire_safety, drill_count, **latest_not_running** | `EU_ALL_PLANTS` | **`plant_uid`** = `QR\|district\|hospital\|capacity\|manufacturer` (`euUID`; `c:null`) |
@@ -79,7 +79,7 @@ mangled EU QR).
 | `meta` | key/value (built_at, coverage_*, counts) | `window._lastBuiltAt`, `COMPLAINTS_TOTAL` | — |
 
 > ✅ **The identity mismatch is now fixed by `plant_uid`.** Every ONA tab carries the same
-> `onaUID` (`district\|facNorm\|lpm\|manufacturer`) and every EU tab the same `euUID`
+> `onaUID` (`district\|facNorm\|lpm`) and every EU tab the same `euUID`
 > (`QR\|district\|hospital\|capacity\|manufacturer`), stamped in `Code.gs`. So `*_ALL_PLANTS`
 > (KPIs + dropdown), `*_MONTHLY_ALL` (trends), and `TL`/`TL2` (drill-downs) are now the **same
 > grouping** of each source's drills — joined by id, not by facility-name matching. The plant
@@ -255,7 +255,7 @@ single-sourced. **Change the meaning once, in `DEFS` (frontend) or the identity 
 ## 10. Canonical identity (`plant_uid`), shared `DEFS`, and invariant checks
 
 **`plant_uid` — one id per plant per source.** Stamped in `Code.gs` on every plant tab:
-- `onaUID(d)` = `district\|facNorm\|lpm\|manufacturer` → on `ona_all_plants`, `ona_monthly_all`, `ona_timeline`
+- `onaUID(d)` = `district\|facNorm\|lpm` → on `ona_all_plants`, `ona_monthly_all`, `ona_timeline` (manufacturer is a displayed attribute, not a key — the ONA vendor field is too inconsistent to key on)
 - `euUID(d)`  = `QR\|district\|hospital\|capacity\|manufacturer` → on `eu_*` tabs
 
 The frontend keys `TL.history` / `TL2.history` by `plant_uid`, the plant dropdown emits it
