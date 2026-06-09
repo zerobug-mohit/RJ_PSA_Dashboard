@@ -102,6 +102,19 @@ function qrSuffix(s) {
   return m ? m[1] : '';
 }
 
+// ── Canonical plant identities (ONE definition each, stamped as plant_uid on
+//    every emitted tab). The frontend joins all shapes of a source by this uid,
+//    so identity changes here propagate everywhere automatically. ──
+// EU drill identity = QR + district + hospital + capacity + manufacturer.
+function euUID(d) {
+  return (d.euQR || '') + '|' + d.distNorm + '|' + d.hospNorm
+       + '|' + (d.cap != null ? d.cap : '') + '|' + (d.mfr || '');
+}
+// ONA drill identity = district + facility + capacity (LPM).
+function onaUID(d) {
+  return d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '');
+}
+
 function fromExcel(serial) {
   if (serial == null || serial === '') return null;
   // Google Sheets getValues() returns Date objects for date-formatted cells
@@ -513,19 +526,20 @@ function deriveDashboard() {
   // ------------------------------------------------------------------
   const onaAllByIdent = {}; // "distNorm|facNorm|lpm" → {drills[], distDisplay, osc, lpm}
   onaParsed.forEach(function(d) {
-    const key = d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '');
+    const key = onaUID(d);
     if (!onaAllByIdent[key]) {
-      onaAllByIdent[key] = { drills: [], distDisplay: districtDisplay(d.distNorm), osc: d.osc, lpm: d.lpm, facNorm: d.facNorm };
+      onaAllByIdent[key] = { uid: key, drills: [], distDisplay: districtDisplay(d.distNorm), osc: d.osc, lpm: d.lpm, facNorm: d.facNorm };
     }
     onaAllByIdent[key].drills.push(d);
     if (!onaAllByIdent[key].osc && d.osc) onaAllByIdent[key].osc = d.osc;
   });
 
-  const onaAllPlantsHeaders = ['district','facility','scheme','capacity','latest_status','latest_purity','latest_date','nf_reason','drill_count'];
+  const onaAllPlantsHeaders = ['plant_uid','district','facility','scheme','capacity','latest_status','latest_purity','latest_date','nf_reason','drill_count'];
   const onaAllPlantsRows = Object.values(onaAllByIdent).map(function(g) {
     var sorted = g.drills.filter(function(d){return d.date;}).sort(function(a,b){return a.date > b.date ? -1 : 1;});
     var latest = sorted[0] || g.drills[0];
     return [
+      g.uid,
       g.distDisplay,
       g.facNorm,
       g.osc || '',
@@ -546,29 +560,29 @@ function deriveDashboard() {
   // Aggregated by month + district + FACILITY so the dashboard can filter the
   // ONA trend charts by an individual plant (facility = normalized ONA facility
   // name, matching ona_all_plants.facility / ONA_ALL_PLANTS.sf in the client).
-  const onaMonthMap = {}; // "month|district|facNorm" → {total, f, n, purs:[]}
+  // Keyed by month + plant_uid so a single plant's trend can be filtered exactly.
+  // district/facility kept for display + backward-compatible facility filtering.
+  const onaMonthMap = {}; // "month|uid" → {...}
   onaParsed.forEach(function(d) {
     if (!d.od) return;
     var m    = d.od.slice(0, 7);
-    var dist = districtDisplay(d.distNorm);
-    var fac  = d.facNorm || '';
-    var key  = m + '|' + dist + '|' + fac;
-    if (!onaMonthMap[key]) onaMonthMap[key] = { month: m, district: dist, facility: fac, total: 0, f: 0, n: 0, purs: [] };
+    var uid  = onaUID(d);
+    var key  = m + '|' + uid;
+    if (!onaMonthMap[key]) onaMonthMap[key] = { month: m, uid: uid, district: districtDisplay(d.distNorm), facility: d.facNorm || '', capacity: (d.lpm != null ? d.lpm : ''), total: 0, f: 0, n: 0, purs: [] };
     onaMonthMap[key].total++;
     if (d.os === 'Functional' || d.os === 'Functional Installed') onaMonthMap[key].f++;
     else onaMonthMap[key].n++;
     if (d.op != null) onaMonthMap[key].purs.push(d.op);
   });
 
-  const onaMonthlyHeaders = ['month','district','facility','total','functional','not_functional','avg_purity'];
+  const onaMonthlyHeaders = ['month','plant_uid','district','facility','capacity','total','functional','not_functional','avg_purity'];
   const onaMonthlyRows = Object.values(onaMonthMap).sort(function(a,b) {
-    var ka = a.month + '|' + a.district + '|' + a.facility, kb = b.month + '|' + b.district + '|' + b.facility;
-    return ka < kb ? -1 : 1;
+    return (a.month + '|' + a.uid) < (b.month + '|' + b.uid) ? -1 : 1;
   }).map(function(s) {
     var avgP = s.purs.length ? (s.purs.reduce(function(a,b){return a+b;},0)/s.purs.length).toFixed(1) : '';
-    return [s.month, s.district, s.facility, s.total, s.f, s.n, avgP];
+    return [s.month, s.uid, s.district, s.facility, s.capacity, s.total, s.f, s.n, avgP];
   });
-  Logger.log('ONA monthly-all: ' + onaMonthlyRows.length + ' month×district×facility rows');
+  Logger.log('ONA monthly-all: ' + onaMonthlyRows.length + ' month×plant rows');
 
   const onaDrillsByCode = {}; // code → [drill]
   const onaTimeline     = []; // flat rows for ona_timeline tab
@@ -709,18 +723,18 @@ function deriveDashboard() {
   // component is simply blank for those rows; the other four fields carry the key.)
   const euAllByIdent = {};
   euParsed.forEach(function(d) {
-    var key = (d.euQR || '') + '|' + d.distNorm + '|' + d.hospNorm
-            + '|' + (d.cap != null ? d.cap : '') + '|' + (d.mfr || '');
+    var key = euUID(d);
     if (!euAllByIdent[key]) {
-      euAllByIdent[key] = { drills: [], distDisplay: districtDisplay(d.distNorm), hosp: d.hospNorm, cap: d.cap };
+      euAllByIdent[key] = { uid: key, drills: [], distDisplay: districtDisplay(d.distNorm), hosp: d.hospNorm, cap: d.cap };
     }
     euAllByIdent[key].drills.push(d);
   });
-  const euAllPlantsHeaders = ['district','hospital','capacity','latest_status','latest_purity','latest_hours','latest_date','eu_leakage','eu_fire_safety','drill_count','latest_not_running'];
+  const euAllPlantsHeaders = ['plant_uid','district','hospital','capacity','latest_status','latest_purity','latest_hours','latest_date','eu_leakage','eu_fire_safety','drill_count','latest_not_running'];
   const euAllPlantsRows = Object.values(euAllByIdent).map(function(g) {
     var sorted = g.drills.filter(function(d){ return d.date; }).sort(function(a,b){ return a.date > b.date ? -1 : 1; });
     var latest = sorted[0] || g.drills[0];
     return [
+      g.uid,
       g.distDisplay,
       g.hosp,
       g.cap != null ? g.cap : '',
@@ -739,27 +753,28 @@ function deriveDashboard() {
   // BUILD eu_monthly_all — ALL EU drills aggregated by month + district + FACILITY
   // (facility = normalized hospital name, matching eu_all_plants.hospital /
   // EU_ALL_PLANTS.sf in the client) so EU trend charts can be filtered per plant.
+  // Keyed by month + plant_uid for exact per-plant trend filtering.
+  // district/facility/capacity kept for display + backward-compatible filtering.
   const euMonthMap = {};
   euParsed.forEach(function(d) {
     if (!d.ed) return;
     var m    = d.ed.slice(0, 7);
-    var dist = districtDisplay(d.distNorm);
-    var fac  = d.hospNorm || '';
-    var key  = m + '|' + dist + '|' + fac;
-    if (!euMonthMap[key]) euMonthMap[key] = { month: m, district: dist, facility: fac, total: 0, f: 0, n: 0, purs: [] };
+    var uid  = euUID(d);
+    var key  = m + '|' + uid;
+    if (!euMonthMap[key]) euMonthMap[key] = { month: m, uid: uid, district: districtDisplay(d.distNorm), facility: d.hospNorm || '', capacity: (d.cap != null ? d.cap : ''), total: 0, f: 0, n: 0, purs: [] };
     euMonthMap[key].total++;
     if (d.es === 'Functional' || d.es === 'Functional Installed') euMonthMap[key].f++;
     else euMonthMap[key].n++;
     if (d.ep != null && d.ep > 0) euMonthMap[key].purs.push(d.ep);
   });
-  const euMonthlyHeaders = ['month','district','facility','total','functional','not_functional','avg_purity'];
+  const euMonthlyHeaders = ['month','plant_uid','district','facility','capacity','total','functional','not_functional','avg_purity'];
   const euMonthlyRows = Object.values(euMonthMap).sort(function(a,b) {
-    return (a.month+'|'+a.district+'|'+a.facility) < (b.month+'|'+b.district+'|'+b.facility) ? -1 : 1;
+    return (a.month+'|'+a.uid) < (b.month+'|'+b.uid) ? -1 : 1;
   }).map(function(s) {
     var avgP = s.purs.length ? (s.purs.reduce(function(a,b){return a+b;},0)/s.purs.length).toFixed(1) : '';
-    return [s.month, s.district, s.facility, s.total, s.f, s.n, avgP];
+    return [s.month, s.uid, s.district, s.facility, s.capacity, s.total, s.f, s.n, avgP];
   });
-  Logger.log('EU monthly-all: ' + euMonthlyRows.length + ' month×district×facility rows');
+  Logger.log('EU monthly-all: ' + euMonthlyRows.length + ' month×plant rows');
 
   // ------------------------------------------------------------------
   // STEP E — Complaints → Code via QR → registry
@@ -1148,6 +1163,7 @@ function deriveDashboard() {
     onaDrillsByCode[code].forEach(function(d) {
       onaTimeline.push([
         code,
+        onaUID(d),
         cm ? cm.dd : '',
         cm ? cm.sf : '',
         cm ? (cm.cs != null ? cm.cs : '') : '',
@@ -1165,12 +1181,13 @@ function deriveDashboard() {
   var uIdx = 0;
   onaParsed.forEach(function(d) {
     if (matchedDrillSet.has(d)) return;
-    const identKey = d.distNorm + '|' + d.facNorm + '|' + (d.lpm != null ? d.lpm : '');
+    const identKey = onaUID(d);
     if (!unmatchedSynCodes[identKey]) {
       unmatchedSynCodes[identKey] = 'U' + (uIdx++);
     }
     onaTimeline.push([
       unmatchedSynCodes[identKey],
+      identKey,
       districtDisplay(d.distNorm),
       d.facNorm,
       d.lpm != null ? d.lpm : '',
@@ -1180,7 +1197,7 @@ function deriveDashboard() {
     ]);
   });
 
-  const onaTimelineHeaders = ['code','district','facility','capacity','date','purity','status'];
+  const onaTimelineHeaders = ['code','plant_uid','district','facility','capacity','date','purity','status'];
 
   // ------------------------------------------------------------------
   // BUILD eu_timeline ROWS — ALL EU drills (matched + unmatched)
@@ -1197,6 +1214,7 @@ function deriveDashboard() {
     euDrillsByCode[code].forEach(function(d) {
       euTimeline.push([
         code,
+        euUID(d),
         cm ? cm.dd : '',
         cm ? cm.sf : '',
         cm ? (cm.cs != null ? cm.cs : '') : '',
@@ -1208,17 +1226,19 @@ function deriveDashboard() {
     });
   });
 
-  // Unmatched EU drills — synthetic codes (V prefix to distinguish from ONA's U prefix)
+  // Unmatched EU drills — synthetic codes (V prefix); grouped by the same uid
+  // so each synthetic code maps 1:1 to a plant_uid.
   const unmatchedEUSynCodes = {};
   var vIdx = 0;
   euParsed.forEach(function(d) {
     if (matchedEUDrillSet.has(d)) return;
-    const identKey = d.distNorm + '|' + d.hospNorm + '|' + (d.cap != null ? d.cap : '');
+    const identKey = euUID(d);
     if (!unmatchedEUSynCodes[identKey]) {
       unmatchedEUSynCodes[identKey] = 'V' + (vIdx++);
     }
     euTimeline.push([
       unmatchedEUSynCodes[identKey],
+      identKey,
       districtDisplay(d.distNorm),
       d.hospNorm,
       d.cap != null ? d.cap : '',
@@ -1229,7 +1249,7 @@ function deriveDashboard() {
     ]);
   });
 
-  const euTimelineHeaders = ['code','district','facility','capacity','date','purity','status','eq_status'];
+  const euTimelineHeaders = ['code','plant_uid','district','facility','capacity','date','purity','status','eq_status'];
 
   // ------------------------------------------------------------------
   // BUILD dist_p1 ROWS  (§5.3)
