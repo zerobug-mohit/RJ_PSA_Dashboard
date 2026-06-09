@@ -1143,6 +1143,12 @@ async function loadDashboard() {
       var comps = [];
       try { comps = r.complaints ? JSON.parse(r.complaints) : []; } catch(e){ console.error('EU_CROSS complaint JSON parse failed for',r.hospital,r.district,':',e.message); }
       var active = comps.filter(function(c){ return c.st !== 'Resolved'; });
+      // Reporting flags computed from the registry-direct EU-drill linkage (so the QR
+      // funnel can reconcile reporting vs not-reporting on ONE basis — see rp3).
+      var _ed = normDate_(r.eu_date) || null;
+      var _dc = +r.eu_drill_count || 0;
+      var _ds = _ed ? Math.round((Date.now() - new Date(_ed+'T00:00:00').getTime())/86400000) : null;
+      var _rr = _dc > 0 && _ds != null && _ds <= 90;   // reported in the last 90 days
       return {
         dd:   r.district  || '',
         sf:   r.hospital  || '',
@@ -1156,17 +1162,17 @@ async function loadDashboard() {
         es:   r.eu_status  || '',
         ep:   r.eu_purity  !== '' ? +r.eu_purity  : null,
         epr:  r.eu_hours   !== '' ? +r.eu_hours   : null,
-        ed:   normDate_(r.eu_date) || null,
+        ed:   _ed,
         el:   isTruthy(r.eu_leakage),
         ef:   r.eu_fire_safety || '',
-        eu_drill_count: +r.eu_drill_count || 0,
+        eu_drill_count: _dc,
         // Complaint fields (same names as slim_plants withMetrics adds)
         ct:   +r.complaint_count || 0,
         ha:   isTruthy(r.has_active_complaint),
         cl:   comps,
-        // Dummy ONA fields (not available in this cross-reference); use QR as display code
+        // Reporting derived from EU drills; ONA-only fields stay empty. Use QR as display code.
         c: r.qr_suffix || null, os: '', osc: '', op: null, od: null, or_: '',
-        re: false, rr: false, ds: null, dept: '', co: null,
+        re: _dc > 0, rr: _rr, ds: _ds, dept: '', co: null,
         active_comps: active.length,
       };
     });
@@ -4392,10 +4398,15 @@ function rp3(){
   const drillFrom=fv('f3from')||null, drillTo=fv('f3to')||null;
   const drillDateLabel = drillFrom||drillTo ? ` — ${drillFrom||'start'} to ${drillTo||'today'}` : (window.EU_RANGE ? ' — '+window.EU_RANGE+' (all)' : ' (all)');
 
-  // ── Registry funnel top: ALL registry assets (not capped to 441 matched) ──
+  // ── Registry funnel: ALL registry assets, on a SINGLE basis (eu_direct_cross). ──
+  // EU_CROSS is the same registry universe as registry_plants (identical total / has-QR /
+  // verified counts) but ALSO carries the EU-drill reporting flags (re/rr/ds), so the
+  // funnel's "reporting" and "not reporting" reconcile on one set instead of mixing
+  // REGISTRY_ALL (no reporting flag) with slim_plants (matched-only) — which previously
+  // made "Verified, not reporting" count the entire verified pool.
   const selDist3  = msGet('ms3d');
-  const selPlant3 = msGet('ms3p');  // district|hospital keys from REGISTRY_ALL
-  const regAll = REGISTRY_ALL.filter(function(p) {
+  const selPlant3 = msGet('ms3p');  // district|hospital keys (dd|sf)
+  const regAll = EU_CROSS.filter(function(p) {
     if (selDist3.length  && !selDist3.includes(p.dd)) return false;
     if (selPlant3.length && !selPlant3.includes(p.dd+'|'+p.sf)) return false;
     return true;
@@ -4406,33 +4417,18 @@ function rp3(){
   const verified  = regAll.filter(function(p){ return p.iv && p.hq; });
   const unverified= regAll.filter(function(p){ return !p.iv && p.hq; });
 
-  // ── Reporting status: from matched plants only (EU drill linkage requires mapping) ──
-  // Filter by the SAME district + facility keys as the registry funnel above
-  // (slim_plants.sf = sih_facility, which matches REGISTRY_ALL.sf = hospital).
-  let ps = RAW.slim_plants.filter(function(p){
-    if (selDist3.length  && !selDist3.includes(p.dd)) return false;
-    if (selPlant3.length && !selPlant3.includes(p.dd+'|'+p.sf)) return false;
-    return true;
-  });
+  // Reporting works off the SAME registry-direct set (no separate matched-plant basis).
+  let ps = regAll;
 
-  // Reporting: apply drill date filter
-  const repRecent=ps.filter(p=>{
-    if(!p.ed) return false;
-    if(drillFrom&&p.ed<drillFrom) return false;
-    if(drillTo&&p.ed>drillTo) return false;
-    return p.rr; // still within 90d of today AND within custom range
-  });
-  // If date range selected, use it; otherwise keep 90d logic
-  const repInRange = drillFrom||drillTo
-    ? ps.filter(p=>p.ed&&(!drillFrom||p.ed>=drillFrom)&&(!drillTo||p.ed<=drillTo))
-    : ps.filter(p=>p.rr);
-  const repEver=ps.filter(p=>p.re);
-  const notRep=verified.filter(p=>!p.rr);
-  const notRepInRange=verified.filter(p=>!(drillFrom||drillTo?
-    (p.ed&&(!drillFrom||p.ed>=drillFrom)&&(!drillTo||p.ed<=drillTo)):p.rr));
-  const displayRep = drillFrom||drillTo ? repInRange : repRecent;
-  const displayNotRep = drillFrom||drillTo ? verified.filter(p=>!repInRange.includes(p)) : notRep;
-  const pctRep=verified.length?Math.round(displayRep.length/verified.length*100):0;
+  // Reporting computed over the VERIFIED set so the funnel narrows correctly and
+  // "reporting" + "not reporting" always reconcile exactly to the verified pool.
+  // (Date range selected → drilled within that range; else → drilled in the last 90 days.)
+  const repEver = verified.filter(p=>p.re);
+  const displayRep = (drillFrom||drillTo)
+    ? verified.filter(p=>p.ed&&(!drillFrom||p.ed>=drillFrom)&&(!drillTo||p.ed<=drillTo))
+    : verified.filter(p=>p.rr);
+  const displayNotRep = verified.filter(p=>displayRep.indexOf(p)===-1);
+  const pctRep = verified.length ? Math.round(displayRep.length/verified.length*100) : 0;
 
   document.getElementById('k3').innerHTML=[
     kc('Total in registry', N, N+' PSA assets in Stock on Hand', '',
@@ -4453,7 +4449,7 @@ function rp3(){
     kc('Verified + reporting',displayRep.length,pct(displayRep.length,verified.length)+' of '+verified.length+' verified plants','g',
       drillFrom||drillTo
         ? 'Verified plants with a mock-drill record in e-Upkaran within the selected drill date range.'
-        : 'Verified plants with a mock-drill in e-Upkaran in the last 90 days (on or after 17 Jan 2026).',
+        : 'Verified plants with a mock-drill in e-Upkaran in the last 90 days.',
       verified.length+' verified plants · Drill date filter'+drillDateLabel,'m-reporting'),
     kc('Verified, not reporting',displayNotRep.length,pct(displayNotRep.length,verified.length)+' gap of '+verified.length+' verified','r',
       drillFrom||drillTo
