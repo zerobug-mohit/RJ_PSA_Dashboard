@@ -1941,6 +1941,45 @@ function badge(txt,cls){return `<span class="badge ${cls}">${txt}</span>`;}
 function pct(a,b){return b?Math.round(a/b*100)+'%':'—';}
 function avg(arr){return arr.length?parseFloat((arr.reduce((a,b)=>a+b,0)/arr.length).toFixed(1)):null;}
 
+/* ===================== SHARED DEFINITIONS (single source of truth) =====================
+   One place for status semantics so widgets can't silently diverge. If the meaning of
+   "functional" or a status colour ever changes, change it HERE — every chart/KPI/badge
+   that uses DEFS.* updates together. See VISUALIZATION_SPEC.md §DEFS.                     */
+const DEFS = {
+  // EU equipment status: a plant counts as "functional" when its latest e-Upkaran
+  // status is Functional OR Functional Installed.
+  euFunctional: function(es){ return es === 'Functional' || es === 'Functional Installed'; },
+  // EU equipment status: "non-functional" = In Complaint OR Non Functional Repairable.
+  euNonFunctional: function(es){ return es === 'In Complaint' || es === 'Non Functional Repairable'; },
+  // ONA drill status (string form carried on *_ALL_PLANTS rows).
+  onaFunctional: function(os){ return os === 'Functional'; },
+
+  // EU status → fill colour. Canonical 4-way mapping used by every EU status chart/badge.
+  // Empty/unknown status → grey (#aaa); any other non-functional status → amber (#EF9F27).
+  euStatusColor: function(es){
+    return es === 'Functional'           ? '#1D9E75'
+         : es === 'Functional Installed' ? '#378ADD'
+         : es === 'In Complaint'         ? '#E24B4A'
+         : es                            ? '#EF9F27'
+         :                                 '#aaa';
+  },
+  // EU status → badge class (g/b/r/a, grey for empty).
+  euStatusClass: function(es){
+    return es === 'Functional'           ? 'g'
+         : es === 'Functional Installed' ? 'b'
+         : es === 'In Complaint'         ? 'r'
+         : es                            ? 'a'
+         :                                 'gr';
+  },
+
+  // "Not running" has TWO deliberately-distinct operational definitions — they measure
+  // different things, so callers pick explicitly (these used to diverge silently):
+  //   • byPurity: latest drill recorded purity 0  → EU "Purity = 0" KPI (uses the nr flag)
+  //   • byHours:  latest drill recorded 0 run-hrs → EU Intelligence "Not running" group
+  notRunningByPurity: function(p){ return !!p.nr; },
+  notRunningByHours:  function(p){ return p.epr === 0; },
+};
+
 function setPeriod(id, text){ const el=document.getElementById(id); if(el) el.textContent = '⏱ '+text; }
 
 /* ===================== PAGE 4 — DATA REPORT ===================== */
@@ -2999,7 +3038,7 @@ function rp2(){
   const euNFR  = euAll.filter(function(p){ return p.es==='Non Functional Repairable'; });
   const euNF   = euInc.length + euNFR.length;
   const euGP   = euAll.filter(function(p){ return p.ep != null && p.ep >= 93; });
-  const euNR   = euAll.filter(function(p){ return p.nr; });  // latest drill purity = 0 (not running); ep is nulled for averages so use the explicit flag
+  const euNR   = euAll.filter(DEFS.notRunningByPurity);  // "Purity = 0" KPI — see DEFS.notRunningByPurity (distinct from Intelligence's hours=0 def)
 
   // Record counts for this filtered view
   const euAllRecords = euAll.reduce(function(s,p){ return s + (p.cnt||0); }, 0);
@@ -3100,8 +3139,8 @@ function rpC(){
   // Only registry assets with ≥1 EU mockdrill record (excludes complaint-only assets).
   const euWithDrills = euCrossFiltered.filter(function(p){ return p.eu_drill_count > 0; });
   const matchedN2 = euWithDrills.length;
-  const euFuncSet = function(p){ return p.es==='Functional' || p.es==='Functional Installed'; };
-  const euNFSet   = function(p){ return p.es==='In Complaint' || p.es==='Non Functional Repairable'; };
+  const euFuncSet = function(p){ return DEFS.euFunctional(p.es); };
+  const euNFSet   = function(p){ return DEFS.euNonFunctional(p.es); };
   // Same four cross-source KPIs as the ONA sub-tab, computed from EU data
   const wc2  = euWithDrills.filter(function(p){ return p.ct > 0; });
   const dfo2 = euWithDrills.filter(function(p){ return euFuncSet(p) && p.ha; });
@@ -3359,7 +3398,7 @@ function _euIntelRenderDetail(body, ps) {
       : age <= 30 ? badge(age+'d ago','g') : age <= 90 ? badge(age+'d ago','a') : badge(age+'d ago','r');
     const purTxt = p.ep != null && p.ep > 0
       ? '<span style="color:' + pur2Color(p.ep) + ';font-weight:600">' + p.ep + '%</span>' : '—';
-    const euCls  = p.es==='Functional'?'g':p.es==='Functional Installed'?'b':p.es==='In Complaint'?'r':'a';
+    const euCls  = DEFS.euStatusClass(p.es);
     const leakBadge = p.el === true ? badge('Yes','r') : badge('No','gr');
     const fireBadge = (p.ef === '2' || p.ef === 2) ? badge('Non-compliant','a') : badge('Compliant','gr');
     const hrsTxt    = p.epr != null ? p.epr + ' hrs' : '—';
@@ -3590,7 +3629,7 @@ function eutlDrawOverview(){
     if(eutlPlantFilter&&String(p.c)!==eutlPlantFilter) return;
     const m=p.ed.slice(0,7);
     if(!byM[m]) byM[m]={f:0,n:0};
-    if(p.es==='Functional'||p.es==='Functional Installed') byM[m].f++;
+    if(DEFS.euFunctional(p.es)) byM[m].f++;
     else byM[m].n++;
   });
   const months=Object.keys(byM).sort();
@@ -3643,7 +3682,7 @@ function eutlDrawMonth(ym){
   if(!list.length){container.innerHTML='<div style="padding:20px;color:var(--muted);font-size:12px">No drills this month.</div>';return;}
   let rows='';
   list.forEach(function(p){
-    const clr=p.es==='Functional'?'#1D9E75':p.es==='Functional Installed'?'#378ADD':p.es==='In Complaint'?'#E24B4A':'#EF9F27';
+    const clr=DEFS.euStatusColor(p.es);
     const pur=p.ep&&p.ep<=100&&p.ep>0?`${p.ep}%`:'—';
     const tip=`${p.es}${p.ep?' | Purity: '+p.ep+'%':''}`;
     const dot=`<span title="${tip}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${clr};margin-right:3px;cursor:default;vertical-align:middle"></span>`;
@@ -3668,7 +3707,7 @@ function eutlDrawPlant(p){
   const container=document.getElementById('eutl-container');
   const ph=TL2.history[p.uid||String(p.c)];
   const reads=ph?(ph.h||[]).slice().sort(function(a,b){ return (a.d||'')<(b.d||'')?-1:1; }):[];
-  const clrOf=function(es){ return es==='Functional'?'#1D9E75':es==='Functional Installed'?'#378ADD':es==='In Complaint'?'#E24B4A':'#EF9F27'; };
+  const clrOf=function(es){ return DEFS.euStatusColor(es); };
   const statusOf=function(r){ return r.es || (r.s===1?'Functional':'Non Functional Repairable'); };
   const lblc=clrOf(p.es);
   const purClr=p.ep&&p.ep>=93?'#1D9E75':p.ep&&p.ep>=90?'#A8C44A':p.ep&&p.ep>=80?'#EF9F27':'#E24B4A';
@@ -3787,7 +3826,7 @@ function eufcPlantMetrics(p) {
 function eufcDrawOverview() {
   eufcMode = 'overview';
   const ps = eufcFilteredPlants();
-  const func   = ps.filter(p => p.es === 'Functional' || p.es === 'Functional Installed');
+  const func   = ps.filter(p => DEFS.euFunctional(p.es));
   const broken = ps.filter(p => p.es === 'In Complaint' || p.es === 'Non Functional Repairable');
 
   // Functional breakdown
@@ -3854,16 +3893,16 @@ function eufcClickGroup(group) {
 
   let plants;
   const isFunc = group.startsWith('func');
-  if(group==='func-active')       plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='Functional'||p.es==='Functional Installed')&&m.active_count>0; });
-  else if(group==='func-low')     plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='Functional'||p.es==='Functional Installed')&&m.active_count===0&&m.bucket==='Low'; });
-  else if(group==='func-mid')     plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='Functional'||p.es==='Functional Installed')&&m.active_count===0&&m.bucket==='Mid'; });
-  else if(group==='func-high')    plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='Functional'||p.es==='Functional Installed')&&m.active_count===0&&m.bucket==='High'; });
-  else if(group==='func-none')    plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='Functional'||p.es==='Functional Installed')&&m.active_count===0&&m.bucket===null; });
-  else if(group==='broken-pend-att')  plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='In Complaint'||p.es==='Non Functional Repairable')&&m.latest_status==='Pending Attendance'; });
-  else if(group==='broken-under-rep') plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='In Complaint'||p.es==='Non Functional Repairable')&&m.latest_status==='Under Repair'; });
-  else if(group==='broken-pend-moic') plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='In Complaint'||p.es==='Non Functional Repairable')&&m.latest_status==='Pending MOIC Verification'; });
-  else if(group==='broken-resolved')  plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='In Complaint'||p.es==='Non Functional Repairable')&&m.active_count===0&&m.comp_count>0; });
-  else if(group==='broken-no-comp')   plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (p.es==='In Complaint'||p.es==='Non Functional Repairable')&&m.comp_count===0; });
+  if(group==='func-active')       plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euFunctional(p.es))&&m.active_count>0; });
+  else if(group==='func-low')     plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euFunctional(p.es))&&m.active_count===0&&m.bucket==='Low'; });
+  else if(group==='func-mid')     plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euFunctional(p.es))&&m.active_count===0&&m.bucket==='Mid'; });
+  else if(group==='func-high')    plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euFunctional(p.es))&&m.active_count===0&&m.bucket==='High'; });
+  else if(group==='func-none')    plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euFunctional(p.es))&&m.active_count===0&&m.bucket===null; });
+  else if(group==='broken-pend-att')  plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euNonFunctional(p.es))&&m.latest_status==='Pending Attendance'; });
+  else if(group==='broken-under-rep') plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euNonFunctional(p.es))&&m.latest_status==='Under Repair'; });
+  else if(group==='broken-pend-moic') plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euNonFunctional(p.es))&&m.latest_status==='Pending MOIC Verification'; });
+  else if(group==='broken-resolved')  plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euNonFunctional(p.es))&&m.active_count===0&&m.comp_count>0; });
+  else if(group==='broken-no-comp')   plants=ps.filter(p=>{ const m=eufcPlantMetrics(p); return (DEFS.euNonFunctional(p.es))&&m.comp_count===0; });
   else plants=[];
 
   eufcDrawGroup(plants, isFunc, group);
@@ -3945,8 +3984,8 @@ function eufcClickPlant(code) {
 function eufcDrawPlant(p) {
   const el = document.getElementById('eufc-container');
   const comps = eufcFilterComps(p.cl||[]);
-  const euClr = p.es==='Functional'?'#1D9E75':p.es==='Functional Installed'?'#378ADD':p.es==='In Complaint'?'#E24B4A':'#EF9F27';
-  const euCls = p.es==='Functional'?'g':p.es==='Functional Installed'?'b':p.es==='In Complaint'?'r':'a';
+  const euClr = DEFS.euStatusColor(p.es);
+  const euCls = DEFS.euStatusClass(p.es);
   const onaCls= p.os==='Functional'?'g':'r';
 
   const rows = comps.map((c,i) => {
@@ -4171,7 +4210,7 @@ function pur2DrawPlant(p){
     ${purStatChip('Avg (all drills)', `<span style="color:${pur2Color(+avgP)}">${avgP}%</span>`, allVals.length+' readings')}
     ${purStatChip('Range', allVals.length?`${minP}% – ${maxP}%`:'—', 'min – max')}
     ${purStatChip('Capacity', p.co||'—', 'LPM')}
-    ${purStatChip('EU status', `<span style="color:${p.es==='Functional'?'#1D9E75':p.es==='Functional Installed'?'#378ADD':'#E24B4A'}">${p.es||'—'}</span>`, 'latest drill')}
+    ${purStatChip('EU status', `<span style="color:${DEFS.euStatusColor(p.es)}">${p.es||'—'}</span>`, 'latest drill')}
   </div>`;
 
   // Line chart (same pattern as purDrawPlant)
@@ -5130,7 +5169,7 @@ function fnDrawTrend() {
     if (!byM[mo]) byM[mo] = {total:0, verified:0, func:0, nf:0, plants:[]};
     byM[mo].total++;
     if (p.hq && p.iv) byM[mo].verified++;
-    if (p.es === 'Functional' || p.es === 'Functional Installed') byM[mo].func++;
+    if (DEFS.euFunctional(p.es)) byM[mo].func++;
     else byM[mo].nf++;
     byM[mo].plants.push(p);
   });
@@ -5260,14 +5299,14 @@ function fnDrawPlantTable(mainPs, dropPs, dropLabel, title) {
 
   // Sort: NF first, then by district
   const sorted = [...mainPs].sort((a,b) => {
-    const af = a.es==='Functional'||a.es==='Functional Installed'?1:0;
-    const bf = b.es==='Functional'||b.es==='Functional Installed'?1:0;
+    const af = DEFS.euFunctional(a.es)?1:0;
+    const bf = DEFS.euFunctional(b.es)?1:0;
     return af - bf || (a.dd > b.dd ? 1 : -1);
   });
 
   // Stats bar
   const tot = mainPs.length;
-  const func = mainPs.filter(p=>p.es==='Functional'||p.es==='Functional Installed').length;
+  const func = mainPs.filter(p=>DEFS.euFunctional(p.es)).length;
   const iv   = mainPs.filter(p=>p.hq&&p.iv).length;
   const noDrill = mainPs.filter(p=>!p.ed).length;
 
@@ -5277,7 +5316,7 @@ function fnDrawPlantTable(mainPs, dropPs, dropLabel, title) {
 
   // Main table
   let rows = sorted.slice(0, 80).map(p => {
-    const esCls = p.es==='Functional'?'#1D9E75':p.es==='Functional Installed'?'#378ADD':p.es==='In Complaint'?'#E24B4A':'#EF9F27';
+    const esCls = DEFS.euStatusColor(p.es);
     const ivBadge = p.hq && p.iv
       ? `<span style="color:#1D9E75;font-size:10px"> Verified</span>`
       : p.hq
@@ -5296,7 +5335,7 @@ function fnDrawPlantTable(mainPs, dropPs, dropLabel, title) {
   let dropSection = '';
   if (dropPs.length > 0) {
     const dRows = [...dropPs].slice(0,40).map(p => {
-      const esCls = p.es==='Functional'?'#1D9E75':p.es==='Functional Installed'?'#378ADD':p.es==='In Complaint'?'#E24B4A':p.es?'#EF9F27':'#aaa';
+      const esCls = DEFS.euStatusColor(p.es);
       return `<tr style="opacity:0.75"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.sf||p.of).slice(0,32)} <span style="font-size:10px;color:var(--muted);font-family:monospace">#${p.c}</span></td> <td style="font-size:11px;text-align:center">${p.co||'—'} LPM</td> <td><span style="background:${esCls};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${p.es||'—'}</span></td> <td colspan="3" style="font-size:11px;color:#a32d2d">${dropLabel}</td> </tr>`;
     }).join('');
     dropSection = `
@@ -5976,8 +6015,8 @@ Never drilled / no ONA record: ${rec.never} plants (${pct(rec.never,P.length)})`
   window._aiFns['ai-eutl'] = function() {
     const ctx  = getFilterCtx(2);
     const P    = filteredPlants(2).filter(p => p.es);
-    const euFn = P.filter(p => ['Functional','Functional Installed'].includes(p.es));
-    const euNF = P.filter(p => ['In Complaint','Non Functional Repairable'].includes(p.es));
+    const euFn = P.filter(p => DEFS.euFunctional(p.es));
+    const euNF = P.filter(p => DEFS.euNonFunctional(p.es));
     const euFI = P.filter(p => p.es === 'Functional Installed');
     const euIC = P.filter(p => p.es === 'In Complaint');
     const euNR = P.filter(p => p.es === 'Non Functional Repairable');
@@ -6024,10 +6063,10 @@ Below WHO 93% threshold: ${below93.length} plants (${pct(below93.length,purityPl
                    && (!eDist.length || eDist.includes(p.dd))
                    && (!euFrom || (p.ed && p.ed >= euFrom))
                    && (!euTo   || (p.ed && p.ed <= euTo)));
-    const euFn = P.filter(p => ['Functional','Functional Installed'].includes(p.es));
+    const euFn = P.filter(p => DEFS.euFunctional(p.es));
     const euFnComp   = euFn.filter(p => filterComplaints(p.cl, ctx.fromD, ctx.toD).some(c=>c.st!=='Resolved'));
     const euFnNoComp = euFn.filter(p => filterComplaints(p.cl, ctx.fromD, ctx.toD).length===0);
-    const euNF = P.filter(p => ['In Complaint','Non Functional Repairable'].includes(p.es));
+    const euNF = P.filter(p => DEFS.euNonFunctional(p.es));
     const euNFComp   = euNF.filter(p => filterComplaints(p.cl, ctx.fromD, ctx.toD).length > 0);
     const euNFNoComp = euNF.filter(p => filterComplaints(p.cl, ctx.fromD, ctx.toD).length === 0);
     const alertByDist = {};
@@ -6260,8 +6299,8 @@ registerAIFns();
     const onaFn    = withONA.filter(p=>p.os==='Functional');
     const onaNF    = withONA.filter(p=>p.os==='Not-Functional');
     const withEU   = P.filter(p=>p.es);
-    const euFn     = withEU.filter(p=>['Functional','Functional Installed'].includes(p.es));
-    const euNF     = withEU.filter(p=>['In Complaint','Non Functional Repairable'].includes(p.es));
+    const euFn     = withEU.filter(p=>DEFS.euFunctional(p.es));
+    const euNF     = withEU.filter(p=>DEFS.euNonFunctional(p.es));
     const withOP   = P.filter(p=>p.op&&p.op>0&&p.op<=100);
     const avgOP    = withOP.length?(withOP.reduce((s,p)=>s+p.op,0)/withOP.length).toFixed(1):'N/A';
     const withEP   = P.filter(p=>p.epr&&p.epr>0&&p.epr<=100);
