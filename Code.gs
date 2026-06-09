@@ -921,12 +921,88 @@ function deriveDashboard() {
 
   function daysDiff2(a, b) { return (a && b) ? Math.round((b - a) / 86400000) : null; }
 
+  // ── CLAIM-ONCE assignment ─────────────────────────────────────────────────
+  // Each EU drill and each complaint is attributed to EXACTLY ONE registry asset.
+  // Previously every asset independently grabbed all matching drills/complaints, so
+  // records at a shared District+Hospital were double-counted on each sibling plant
+  // (see _extras/verify_joins.py — ~59% of EU complaint attachments were duplicates).
+  var regParsed = regRows.map(function(r) {
+    return {
+      dist: normName(districtDisplay(r['District Name'] || r['_col1'] || '')),
+      hosp: normName(r['Hospital Name'] || r['_col2'] || ''),
+      cap:  parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col22'] || ''),
+      qr:   qrSuffix(r['QR Code'] || r['_col9'] || ''),
+      mfr:  normMfr(r['Supplier'] || r['_col19'] || ''),
+    };
+  });
+
+  // Candidate registry-asset indices for a normalized dist/hosp/cap — same predicate the
+  // per-asset match used (district exact, hospital exact-or-substring, capacity only when
+  // both sides have it). useFw adds the 4+ char first-word hospital fallback (drills only,
+  // matching the original behaviour; complaints used substring-only).
+  function regCandidates_(dist, distDisp, hosp, cap, useFw) {
+    var out = [];
+    for (var i = 0; i < regParsed.length; i++) {
+      var a = regParsed[i];
+      if (a.dist !== dist && a.dist !== distDisp) continue;
+      if (a.hosp !== hosp) {
+        if (a.hosp.indexOf(hosp) === -1 && hosp.indexOf(a.hosp) === -1) {
+          if (!useFw) continue;
+          var fw = hosp.split(' ')[0];
+          if (fw.length < 4 || a.hosp.indexOf(fw) === -1) continue;
+        }
+      }
+      if (cap && a.cap && a.cap !== cap) continue;
+      out.push(i);
+    }
+    return out;
+  }
+  // Narrow a candidate list by manufacturer (first token) then exact QR. Returns the list.
+  function narrowCand_(cand, mfr, qr) {
+    if (cand.length > 1 && mfr) {
+      var tok = mfr.split(' ')[0];
+      var m = cand.filter(function(i){ return regParsed[i].mfr && regParsed[i].mfr.indexOf(tok) !== -1; });
+      if (m.length) cand = m;
+    }
+    if (cand.length > 1 && qr) {
+      var q = cand.filter(function(i){ return regParsed[i].qr && regParsed[i].qr === qr; });
+      if (q.length) cand = q;
+    }
+    return cand;
+  }
+
+  // Assign each EU drill to one asset (capacity disambiguates; EU QR is unusable sci-notation).
+  var drillsByAssetIdx = {};
+  euParsed.forEach(function(d) {
+    var cand = regCandidates_(d.distNorm, d.distDisp, d.hospNorm, d.cap, true);
+    if (!cand.length) return;
+    cand = narrowCand_(cand, d.mfr, '');
+    var owner = cand[0];
+    (drillsByAssetIdx[owner] = drillsByAssetIdx[owner] || []).push(d);
+  });
+
+  // Assign each complaint to one asset (mfr then QR tiebreak; deterministic first if still tied).
+  var compsByAssetIdx = {};
+  var euCompAssigned = 0, euCompMiss = 0, euCompTie = 0;
+  compParsed.forEach(function(comp) {
+    if (!comp.dist) return;
+    var cand = regCandidates_(comp.dist, comp.dist, comp.hosp, comp.cap, false);
+    if (!cand.length) { euCompMiss++; return; }
+    cand = narrowCand_(cand, comp.mfr, comp.qr);
+    if (cand.length > 1) euCompTie++;   // still tied → first asset, but counted ONCE (no double-count)
+    var owner = cand[0];
+    (compsByAssetIdx[owner] = compsByAssetIdx[owner] || []).push(comp);
+    euCompAssigned++;
+  });
+  Logger.log('EU direct cross (claim-once): ' + euCompAssigned + ' complaints assigned, '
+    + euCompMiss + ' unmatched, ' + euCompTie + ' tie-broken to first asset');
+
   const euDirectCrossRows = [];
   var euDirectMatched = 0;
 
   var euDCMatchedByDHC = 0;
 
-  regRows.forEach(function(r) {
+  regRows.forEach(function(r, regIdx) {
     var regDist = normName(districtDisplay(r['District Name'] || r['_col1'] || ''));
     var regHosp = normName(r['Hospital Name'] || r['_col2'] || '');
     var regCap  = parseCap(r['Capacity of PSA Plant (in LPM)'] || r['_col22'] || '');
@@ -934,62 +1010,17 @@ function deriveDashboard() {
     var sii     = String(r['Inventory Status'] || r['_col17'] || '').trim();
     var regMfr  = normMfr(r['Supplier'] || r['_col19'] || '');
 
-    // Match EU drills by district + hospital + capacity (manufacturer tiebreak for ambiguous cases).
-    // QR-based matching is not possible: EU stores QR as large integers (~20 digits) that
-    // JavaScript truncates to scientific notation, losing the digits needed for suffix matching.
-    var euHits = [];
-    var candidates = euParsed.filter(function(d) {
-      if (d.distNorm !== regDist && d.distDisp !== regDist) return false;
-      if (d.hospNorm !== regHosp) {
-        if (!d.hospNorm.includes(regHosp) && !regHosp.includes(d.hospNorm)) {
-          var fw = regHosp.split(' ')[0];
-          if (fw.length < 4 || !d.hospNorm.includes(fw)) return false;
-        }
-      }
-      if (regCap && d.cap && d.cap !== regCap) return false;
-      return true;
-    });
-    if (candidates.length) {
-      if (candidates.length > 1 && regMfr) {
-        var mfrMatch = candidates.filter(function(d){ return d.mfr && d.mfr.indexOf(regMfr.split(' ')[0]) !== -1; });
-        if (mfrMatch.length) candidates = mfrMatch;
-      }
-      euHits = candidates;
-      euDCMatchedByDHC++;
-    }
+    // EU drills assigned to this asset by the claim-once pass above (no double-counting).
+    var euHits = drillsByAssetIdx[regIdx] || [];
+    if (euHits.length) euDCMatchedByDHC++;
 
     var sortedEU = euHits.filter(function(d){return d.date;}).sort(function(a,b){return a.date>b.date?-1:1;});
     var latestEU = sortedEU[0] || euHits[0];
 
-    // Match complaints by District+Hospital+Capacity+Manufacturer, with QR as final tiebreaker.
-    // Progressive narrowing only applies when the registry has multiple assets at the same
-    // DHC key — for unique locations the D+H+C match is sufficient.
+    // Complaints assigned to this asset by the claim-once pass above (each complaint owned
+    // by exactly one asset — no double-counting across siblings at a shared hospital).
     var regComps = [];
-    var isDHCShared = (byDHC[regDist + '|' + regHosp + '|' + regCap] || []).length > 1;
-
-    var compMatches = compParsed.filter(function(comp) {
-      if (!comp.dist) return false;
-      if (comp.dist !== regDist) return false;
-      if (comp.hosp !== regHosp) {
-        if (comp.hosp.indexOf(regHosp) === -1 && regHosp.indexOf(comp.hosp) === -1) return false;
-      }
-      if (regCap && comp.cap && comp.cap !== regCap) return false;
-      return true;
-    });
-
-    if (isDHCShared && compMatches.length > 1) {
-      // Tiebreaker 1: Manufacturer
-      if (regMfr) {
-        var mfrTok = regMfr.split(' ')[0];
-        var byMfr2 = compMatches.filter(function(comp) { return comp.mfr && comp.mfr.indexOf(mfrTok) !== -1; });
-        if (byMfr2.length > 0) compMatches = byMfr2;
-      }
-      // Tiebreaker 2: QR (only if still ambiguous after manufacturer)
-      if (compMatches.length > 1 && qr) {
-        var byQR2 = compMatches.filter(function(comp) { return comp.qr === qr; });
-        if (byQR2.length > 0) compMatches = byQR2;
-      }
-    }
+    var compMatches = compsByAssetIdx[regIdx] || [];
 
     compMatches.forEach(function(comp) {
       var c = comp.raw;
