@@ -1203,6 +1203,7 @@ function deriveDashboard() {
         d.ed,
         d.ep != null ? Number(d.ep).toFixed(2) : '',
         (d.es === 'Functional' || d.es === 'Functional Installed') ? 1 : 0,
+        d.es || '',
       ]);
     });
   });
@@ -1224,10 +1225,11 @@ function deriveDashboard() {
       d.ed,
       d.ep != null ? Number(d.ep).toFixed(2) : '',
       (d.es === 'Functional' || d.es === 'Functional Installed') ? 1 : 0,
+      d.es || '',
     ]);
   });
 
-  const euTimelineHeaders = ['code','district','facility','capacity','date','purity','status'];
+  const euTimelineHeaders = ['code','district','facility','capacity','date','purity','status','eq_status'];
 
   // ------------------------------------------------------------------
   // BUILD dist_p1 ROWS  (§5.3)
