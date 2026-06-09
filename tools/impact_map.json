@@ -58,7 +58,7 @@
     },
 
     "calc.plant_uid": {
-      "desc": "Canonical per-plant identity on every plant tab: euUID (QR|district|hospital|capacity|manufacturer) + onaUID (district|facNorm|lpm). Frontend keys TL/TL2, the dropdown, filters and drill-downs by it (euPlantByUID_ on EU; TL.history[uid] inline on ONA).",
+      "desc": "Canonical per-plant identity on every plant tab: euUID (QR|district|hospital|capacity|manufacturer) + onaUID (district|facNorm|lpm|manufacturer). Frontend keys TL/TL2, the dropdown, filters and drill-downs by it (euPlantByUID_ on EU; TL.history[uid] inline on ONA).",
       "files": ["Code.gs", "index.html"], "reDerive": true,
       "patterns": ["plant_uid", "function euUID", "function onaUID", "euPlantByUID_", "(d.euQR || '')"],
       "feeds": ["tab.eu_all_plants", "tab.eu_monthly", "tab.eu_timeline", "tab.ona_all_plants", "tab.ona_monthly", "tab.ona_timeline"],
