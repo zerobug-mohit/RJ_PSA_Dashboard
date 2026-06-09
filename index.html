@@ -752,7 +752,7 @@ input[type=date]:focus{outline:none;border-color:#aaa}
       <button class="date-clear" onclick="clearAllFilters('pgC1')"> Clear all</button>
     </div>
     <div class="active-filter-bar" id="afbC1"></div>
-    <div class="krow krow-4" id="kC1"></div>
+    <div class="krow krow-5" id="kC1"></div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
         <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This crosses what a plant <em>says</em> about itself in its latest ONA mock-drill (Functional or Not-Functional) with whether it has a <em>complaint on record</em> in the selected date range.</p> <ul> <li><strong>Functional side</strong> — split by whether an open complaint exists and, if resolved, how fast it was closed.</li> <li><strong>Non-Functional side</strong> — split by the current complaint pipeline stage (Pending Attendance, Under Repair, Pending MOIC Verification, Resolved, or no complaint raised).</li> </ul> <p><strong>Drill down:</strong> <span class="sg-action">click any segment</span> to list the plants in that group. Click <span class="sg-action">← Overview</span> to return.</p> <div class="sg-tip"><strong>What to act on:</strong> "Functional + open complaint" plants self-report as working but have an unresolved issue. "Non-Functional, no complaint" plants are broken with no complaint logged — a reporting gap.</div> </div> </details>
@@ -778,7 +778,7 @@ input[type=date]:focus{outline:none;border-color:#aaa}
       <button class="date-clear" onclick="clearAllFilters('pgC2')"> Clear all</button>
     </div>
     <div class="active-filter-bar" id="afbC2"></div>
-    <div class="krow krow-4" id="kC2"></div>
+    <div class="krow krow-5" id="kC2"></div>
     <div class="card">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px">
         <details class="sec-guide"> <summary>How to read this chart</summary> <div class="sec-guide-body"> <p>This crosses each plant's latest <strong>e-Upkaran equipment status</strong> with its complaint record. e-Upkaran drills, complaints, and the registry share the same identifiers, so no ONA mapping is needed.</p> <ul> <li>Each group is an EU status category (Functional, Functional Installed, In Complaint, NF Repairable).</li> <li>Within each, plants are split by whether they also carry an active complaint.</li> </ul> <p><strong>Drill down:</strong> <span class="sg-action">click any segment</span> to list the plants in that group. Click <span class="sg-action">← Overview</span> to return.</p> <div class="sg-tip"><strong>Key flag:</strong> plants marked "Functional" in e-Upkaran but with an active complaint may be self-reporting as operational while an issue sits unresolved.</div> </div> </details>
@@ -3187,6 +3187,10 @@ function rpC(){
   });
   const ps = baseps.map(function(p){ return withMetrics(p, cFrom, cTo); });
   const matchedN = ps.length;
+  // Universe anchors — tie this page's denominator back to the ONA Mockdrill page so the
+  // smaller count is explained, not surprising. Complaints can only attach to a registry
+  // asset, so the crossable set is the registry-matched, unambiguous subset of reporting plants.
+  const onaReporting = ONA_ALL_PLANTS.length;   // 482 — same figure as the ONA Mockdrill page
   const wc  = ps.filter(function(p){ return p.ct > 0; });
   const dfo = ps.filter(function(p){ return p.os==='Functional' && p.ha; });
   const dnf = ps.filter(function(p){ return p.os==='Not-Functional' && p.ct===0; });
@@ -3194,22 +3198,25 @@ function rpC(){
   const avgRes = avg(rcomp.map(function(p){ return p.ar; }));
 
   document.getElementById('kC1').innerHTML=[
-    kc('Plants with ≥1 complaint', wc.length, pct(wc.length, matchedN)+'  of '+matchedN+' verified-clean', '',
-      'Plants with at least one complaint in the selected date range. Limited to '+matchedN+' plants with verified-clean ONA↔registry mapping (ambiguous multi-plant hospitals excluded). '+COMPLAINTS_TOTAL+' total complaint records in source.',
-      matchedN+' verified-clean plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
-    kc('Functional + open complaint', dfo.length, 'Discrepancy — '+matchedN+' verified-clean plants', 'a',
-      'Functional (ONA) plants with an unresolved complaint. Based on '+matchedN+' plants with unambiguous ONA↔registry mapping.',
+    kc('Plants crossable with complaints', matchedN, 'of '+onaReporting+' reporting · registry-matched, unambiguous', '',
+      'Complaints attach to a registry asset, so this page covers only the ONA plants that are matched to the registry with an unambiguous (single-plant-per-hospital) mapping. Of the '+onaReporting+' plants reporting in ONA, '+matchedN+' are crossable with complaint data; the rest are ONA-only/unmatched or sit in ambiguous multi-plant hospitals.',
+      onaReporting+' reporting ONA plants → '+matchedN+' crossable', 'm-complaints'),
+    kc('Plants with ≥1 complaint', wc.length, pct(wc.length, matchedN)+'  of '+matchedN+' crossable plants', '',
+      'Plants with at least one complaint in the selected date range, out of the '+matchedN+' crossable plants. '+COMPLAINTS_TOTAL+' total complaint records in source.',
+      matchedN+' crossable plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
+    kc('Functional + open complaint', dfo.length, 'Discrepancy — of '+matchedN+' crossable plants', 'a',
+      'Functional (ONA) plants with an unresolved complaint. Based on the '+matchedN+' crossable plants.',
       'ONA latest drill · Complaints'+cDateLabel, 'm-discrepancy'),
-    kc('Non-functional, no complaint', dnf.length, 'Gap — '+matchedN+' verified-clean plants', 'r',
-      'Not-Functional (ONA) plants with zero complaints raised. Based on '+matchedN+' plants with unambiguous ONA↔registry mapping.',
+    kc('Non-functional, no complaint', dnf.length, 'Gap — of '+matchedN+' crossable plants', 'r',
+      'Not-Functional (ONA) plants with zero complaints raised. Based on the '+matchedN+' crossable plants.',
       'ONA latest drill · Complaints'+cDateLabel, 'm-discrepancy'),
-    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · '+matchedN+' verified-clean plants', '',
-      'Mean raise→MOIC resolution days for resolved complaints. Based on '+matchedN+' plants with unambiguous ONA↔registry mapping.',
+    kc('Avg resolution time', avgRes?avgRes+'d':'—', 'Resolved · of '+matchedN+' crossable plants', '',
+      'Mean raise→MOIC resolution days for resolved complaints. Based on the '+matchedN+' crossable plants.',
       'Resolved complaints'+cDateLabel, 'm-resolution'),
   ].join('');
 
   const compPeriod = cFrom||cTo ? `Complaints: ${cFrom||'start'} → ${cTo||'today'}` : ('Complaints: ' + (compRange ? compRange+' (all time)' : 'all time'));
-  setPeriod('pC1-period', `${matchedN} verified-clean plants · ${COMPLAINTS_TOTAL} complaint records · ${compPeriod}`);
+  setPeriod('pC1-period', `${matchedN} crossable plants (of ${onaReporting} reporting) · ${COMPLAINTS_TOTAL} complaint records · ${compPeriod}`);
   const allowedCodes = new Set(baseps.map(function(p){ return String(p.c); }));
   fcDraw(cDist[0]||'', cFrom, cTo, allowedCodes);
 
@@ -3225,9 +3232,12 @@ function rpC(){
   // Only registry assets with ≥1 EU mockdrill record (excludes complaint-only assets).
   const euWithDrills = euCrossFiltered.filter(function(p){ return p.eu_drill_count > 0; });
   const matchedN2 = euWithDrills.length;
+  // Universe anchor — tie back to the EU Mockdrill page's 140 unique plants. Complaints need a
+  // registry asset, so only the registry-matched EU-drilled plants are crossable here.
+  const euTotal = EU_ALL_PLANTS.length;   // 140 — same figure as the EU Mockdrill page
   const euFuncSet = function(p){ return DEFS.euFunctional(p.es); };
   const euNFSet   = function(p){ return DEFS.euNonFunctional(p.es); };
-  // Same four cross-source KPIs as the ONA sub-tab, computed from EU data
+  // Same cross-source KPIs as the ONA sub-tab, computed from EU data
   const wc2  = euWithDrills.filter(function(p){ return p.ct > 0; });
   const dfo2 = euWithDrills.filter(function(p){ return euFuncSet(p) && p.ha; });
   const dnf2 = euWithDrills.filter(function(p){ return euNFSet(p) && p.ct === 0; });
@@ -3240,21 +3250,24 @@ function rpC(){
   }).filter(function(v){return v!=null;})) : null;
 
   document.getElementById('kC2').innerHTML=[
-    kc('Plants with ≥1 complaint', wc2.length, pct(wc2.length, matchedN2)+'  of '+matchedN2+' EU plants', '',
-      'EU-drilled plants with at least one complaint on record. Uses registry assets directly matched to EU drills and complaints — no ONA mapping required. '+COMPLAINTS_TOTAL+' total complaint records in source.',
-      matchedN2+' EU-drilled plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
-    kc('Functional + open complaint', dfo2.length, 'Discrepancy — '+matchedN2+' EU plants', 'a',
+    kc('Plants crossable with complaints', matchedN2, 'of '+euTotal+' EU plants · registry-matched', '',
+      'Complaints attach to a registry asset, so this page covers only the EU-drilled plants matched to the registry. Of the '+euTotal+' unique EU plants on the EU Mockdrill page, '+matchedN2+' are registry-matched and crossable with complaint data (no ONA mapping needed — EU, complaints and registry share identifiers).',
+      euTotal+' EU plants → '+matchedN2+' crossable', 'm-complaints'),
+    kc('Plants with ≥1 complaint', wc2.length, pct(wc2.length, matchedN2)+'  of '+matchedN2+' crossable plants', '',
+      'EU-drilled plants with at least one complaint on record, out of the '+matchedN2+' crossable plants. '+COMPLAINTS_TOTAL+' total complaint records in source.',
+      matchedN2+' crossable plants · '+COMPLAINTS_TOTAL+' complaint records', 'm-complaints'),
+    kc('Functional + open complaint', dfo2.length, 'Discrepancy — of '+matchedN2+' crossable plants', 'a',
       'Plants whose latest EU status is Functional / Functional Installed yet have an unresolved complaint.',
-      matchedN2+' EU-drilled plants · Complaints', 'm-discrepancy'),
-    kc('Non-functional, no complaint', dnf2.length, 'Gap — '+matchedN2+' EU plants', 'r',
+      matchedN2+' crossable plants · Complaints', 'm-discrepancy'),
+    kc('Non-functional, no complaint', dnf2.length, 'Gap — of '+matchedN2+' crossable plants', 'r',
       'Plants whose latest EU status is In Complaint / NF Repairable but have zero complaints raised.',
-      matchedN2+' EU-drilled plants · Complaints', 'm-discrepancy'),
-    kc('Avg resolution time', avgRes2?avgRes2+'d':'—', 'Resolved · '+matchedN2+' EU plants', '',
-      'Mean raise→MOIC resolution days across all EU-drilled registry assets with complaint data.',
-      matchedN2+' EU-drilled plants · '+COMPLAINTS_TOTAL+' complaint records','m-resolution'),
+      matchedN2+' crossable plants · Complaints', 'm-discrepancy'),
+    kc('Avg resolution time', avgRes2?avgRes2+'d':'—', 'Resolved · of '+matchedN2+' crossable plants', '',
+      'Mean raise→MOIC resolution days across all crossable EU-drilled plants with complaint data.',
+      matchedN2+' crossable plants · '+COMPLAINTS_TOTAL+' complaint records','m-resolution'),
   ].join('');
 
-  setPeriod('pC2-period', `${matchedN2} EU-drilled plants · ${COMPLAINTS_TOTAL} complaint records`);
+  setPeriod('pC2-period', `${matchedN2} crossable plants (of ${euTotal} EU plants) · ${COMPLAINTS_TOTAL} complaint records`);
   eufcDrawCross(euWithDrills);
 }
 
