@@ -2722,6 +2722,7 @@ function _onaIntelRenderDetail(body, ps) {
     + '</tr></thead><tbody>'
     + (rows || '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
     + '</tbody></table></div>';
+  autoPaginate_(body);
 }
 /* ===================== END ONA INTELLIGENCE WIDGET ===================== */
 
@@ -2949,6 +2950,7 @@ function purDrawMonth(m) {
   document.getElementById('pur-container').innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center"> <span style="font-size:11px;color:var(--muted)">${plantReadings.length} plants with data ·</span> ${binPills}
     </div> <div class="tbl-wrap"><table class="tbl"> <thead><tr><th>District</th><th>Facility</th><th>Capacity</th><th>Trend</th><th>Avg purity</th><th>Complaints</th></tr></thead> <tbody>${rows}</tbody> </table></div>`;
+  autoPaginate_('pur-container');
 }
 
 // Render a tiny 60×20 SVG sparkline for a plant's full purity history
@@ -3545,6 +3547,7 @@ function _euIntelRenderDetail(body, ps) {
     + '</tr></thead><tbody>'
     + (rows || '<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:16px">No plants in this group.</td></tr>')
     + '</tbody></table></div>';
+  autoPaginate_(body);
 }
 /* ===================== END EU INTELLIGENCE WIDGET ===================== */
 
@@ -3806,6 +3809,7 @@ function eutlDrawMonth(ym){
     rows+=`<tr style="cursor:pointer" onclick="eutlClickPlant('${(p.uid||'').replace(/'/g,"\\'")}')"> <td style="font-size:11px;color:var(--muted)">${p.dd}</td> <td style="font-size:12px">${(p.fa||'').slice(0,35)} <span style="font-size:10px;color:var(--muted);font-family:monospace">${codeLbl}</span></td> <td style="font-size:11px;text-align:center">${p.ca!=null?p.ca:'—'} LPM</td> <td><span style="background:${clr};color:#fff;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600">${p.es||'—'}</span></td> <td style="font-size:11px;text-align:center">${pur}</td> <td style="font-size:11px;text-align:center">${p.n}</td> <td>${dot}</td></tr>`;
   });
   container.innerHTML=`<div style="overflow-x:auto"> <table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Status</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Purity</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">Drills</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted)">Drill dots (hover for detail)</th> </tr></thead> <tbody>${rows}</tbody> </table> </div>`;
+  autoPaginate_('eutl-container');
 }
 function eutlClickPlant(uid){
   eutlMode='plant';
@@ -4079,6 +4083,7 @@ function eufcDrawGroup(plants, isFunc, group) {
     ${bnHtml}
     <div style="overflow-x:auto;max-height:320px;overflow-y:auto"> <table class="tbl"> <thead><tr> <th>District</th><th>Facility</th><th>LPM</th><th>Total comps</th> ${colHdrs}
         </tr></thead> <tbody>${rows}</tbody> </table> </div> <div style="font-size:10px;color:var(--muted);margin-top:8px">Click any row for full complaint timeline</div>`;
+  autoPaginate_(el);
 }
 
 function eufcBnStage(label, sub, val, color) {
@@ -4291,6 +4296,7 @@ function pur2DrawMonth(ym){
   const avgV=list.reduce((s,p)=>s+(p.ep||0),0)/list.length;
   container.innerHTML=`
     <div style="font-size:11px;color:var(--muted);margin:8px 0 10px">${list.length} plants · avg <b style="color:${pur2Color(avgV)}">${avgV.toFixed(1)}%</b> · click a row for the plant's purity trend</div> <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px"> <thead><tr style="border-bottom:1px solid var(--border)"> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">District</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:left">Facility</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">LPM</th> <th style="padding:5px 8px;font-size:10px;font-weight:500;color:var(--muted);text-align:center">EU Purity</th> </tr></thead><tbody>${rows}</tbody></table></div>`;
+  autoPaginate_('pur2-container');
 }
 function pur2ClickPlant(uid){
   pur2Mode='plant';
@@ -4684,6 +4690,7 @@ function fcDrawGroup(plants, isFunc, group) {
     ${bnHtml}
     <div style="overflow-x:auto;max-height:320px;overflow-y:auto"> <table class="tbl"> <thead><tr> <th>District</th><th>Facility</th><th>LPM</th><th>Total comps</th> ${colHdrs}
           <th></th> </tr></thead> <tbody>${rows}</tbody> </table> </div> <div style="font-size:10px;color:var(--muted);margin-top:8px">Click any row for full complaint timeline</div>`;
+  autoPaginate_(el);
 }
 
 function fcBnStage(label, sub, val, color) {
@@ -5104,6 +5111,7 @@ function tlDrawMonth(ym) {
     </table>
     ${unmatchedNote}
   </div>`;
+  autoPaginate_('tl-container');
 }
 
 function tlClickPlant(uid) {
@@ -5434,6 +5442,47 @@ function pgGo_(key, bodyId, delta){
   var b=document.getElementById(bodyId); if(b) b.innerHTML=pgBodyHtml_(key);
   var n=document.getElementById(bodyId+'-nav'); if(n) n.innerHTML=pgNavHtml_(key,bodyId);
 }
+
+/* ---- Universal post-render paginator ----
+   Call autoPaginate_(elementOrId) AFTER a drill-down sets its innerHTML. Any <tbody> with
+   more than PG_PER rows is paginated in place (rows beyond the page hidden, Prev/Next nav
+   appended). No row-builder changes needed — works on already-rendered tables anywhere. */
+var PG_PER = 100;
+var _pgState = {};
+var _pgSeq = 0;
+function autoPaginate_(rootOrId){
+  var root = (typeof rootOrId === 'string') ? document.getElementById(rootOrId) : rootOrId;
+  if (!root) return;
+  if (!root.id) root.id = 'pgroot-' + (_pgSeq++);
+  var tbs = root.querySelectorAll('tbody');
+  for (var k=0; k<tbs.length; k++){
+    var tb = tbs[k];
+    var trs = []; for (var i=0;i<tb.children.length;i++){ if (tb.children[i].tagName==='TR') trs.push(tb.children[i]); }
+    if (trs.length <= PG_PER) continue;
+    var navId = root.id + '-pgnav-' + k;
+    var nav = document.getElementById(navId);
+    if (!nav){ nav = document.createElement('div'); nav.id = navId; nav.style.marginTop='8px'; root.appendChild(nav); }
+    _pgState[navId] = { rows: trs, page: 0 };
+    _pgApply_(navId);
+  }
+}
+function _pgApply_(navId){
+  var st=_pgState[navId]; if(!st) return;
+  var per=PG_PER, total=st.rows.length, pages=Math.max(1,Math.ceil(total/per));
+  st.page=Math.min(Math.max(0,st.page),pages-1);
+  var start=st.page*per, end=Math.min(start+per,total);
+  for(var i=0;i<total;i++) st.rows[i].style.display=(i>=start && i<end)?'':'none';
+  var nav=document.getElementById(navId); if(!nav) return;
+  function btn(d,lbl,dis){ return '<button onclick="_pgFlip_(\''+navId+'\','+d+')" '+(dis?'disabled':'')
+    +' style="background:var(--card);border:1px solid var(--border);border-radius:5px;padding:3px 10px;font-size:11px;cursor:'
+    +(dis?'default':'pointer')+';opacity:'+(dis?'0.4':'1')+'">'+lbl+'</button>'; }
+  nav.innerHTML='<div style="display:flex;align-items:center;justify-content:center;gap:12px;font-size:11px;color:var(--muted)">'
+    + btn(-1,'‹ Prev', st.page===0)
+    + '<span>Showing <strong>'+(start+1)+'–'+end+'</strong> of '+total+' · page '+(st.page+1)+'/'+pages+'</span>'
+    + btn(1,'Next ›', st.page>=pages-1)
+    + '</div>';
+}
+function _pgFlip_(navId, delta){ var st=_pgState[navId]; if(!st) return; st.page+=delta; _pgApply_(navId); }
 
 function fnDrawPlantTable(mainPs, dropPs, dropLabel, title) {
   const container = document.getElementById('funnel');
