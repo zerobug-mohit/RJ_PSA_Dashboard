@@ -3271,7 +3271,12 @@ function rpC(){
       matchedN2+' crossable plants · '+COMPLAINTS_TOTAL+' complaint records','m-resolution'),
   ].join('');
 
-  setPeriod('pC2-period', `${matchedN2} crossable plants (of ${euTotal} EU plants) · ${COMPLAINTS_TOTAL} complaint records`);
+  // Dynamic date range for the EU sub-tab — mirrors the ONA sub-tab's "Complaints: …"
+  // label, but this view filters by EU drill date (fc2), so show the EU drill span.
+  const euCompPeriod = (euFrom||euTo)
+    ? `EU drill: ${euFrom||'start'} → ${euTo||'today'}`
+    : ('EU drill: ' + (window.EU_RANGE ? window.EU_RANGE+' (all time)' : 'all time'));
+  setPeriod('pC2-period', `${matchedN2} crossable plants (of ${euTotal} EU plants) · ${COMPLAINTS_TOTAL} complaint records · ${euCompPeriod}`);
   eufcDrawCross(euWithDrills);
 }
 
