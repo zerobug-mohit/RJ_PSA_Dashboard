@@ -156,11 +156,19 @@ dates, Total Downtime) embedded as JSON in `plants.complaints` and `eu_direct_cr
 
 ### Page 4 — QR Code Coverage (`rp3`)  *registry / reporting; no complaints*
 
+**Single basis = `EU_CROSS`** (registry-direct, one row per registry asset, carrying the
+EU-drill linkage). Reporting flags `re`/`rr`/`ds` are computed in the `EU_CROSS` loader
+(`re` = has ≥1 EU drill; `rr` = drilled in last 90 days; `ds` = days since last drill).
+Reporting is computed over the **verified** subset so `reporting + not-reporting`
+reconcile exactly to the verified pool. (Previously the funnel mixed `REGISTRY_ALL` for
+stages with `slim_plants` for reporting, which made "Verified, not reporting" count the
+entire verified pool — fixed.)
+
 | Viz (container) | Source | Calculation | Identity | Filters |
 |---|---|---|---|---|
-| **KPIs** (`k3`) | `REGISTRY_ALL` + `RAW.slim_plants` | total registry; has QR (`hq`); verified (`iv&&hq`); verified+reporting (`rr`); % reporting | registry asset; reporting via slim by `dd\|sf` | district (`ms3d`), plant (`ms3p`), drill date (`f3`) |
-| **Coverage funnel** (`funnel`) | `REGISTRY_ALL` (stages) + `RAW.slim_plants` (reporting) | registry → has QR → verified → ever reported (`re`) → reporting recent (`rr`); Trend view = monthly reporters | registry + `dd\|sf` | district, plant, date |
-| **Priority action list** (`t3`) | `RAW.slim_plants` (`iv&&hq&&!rr`) | verified plants not reporting, sorted by `ds` (days since) | `dd\|sf` | district, plant, date |
+| **KPIs** (`k3`) | `EU_CROSS` | total registry; has QR (`hq`); verified (`iv&&hq`); verified+reporting (`rr`); not-reporting = verified−reporting; % reporting | registry asset (`dd\|sf`) | district (`ms3d`), plant (`ms3p`), drill date (`f3`) |
+| **Coverage funnel** (`funnel`) | `EU_CROSS` | registry → has QR → verified → ever reported (`re`) → reporting recent (`rr`); Trend view = monthly reporters by `ed` | registry asset | district, plant, date |
+| **Priority action list** (`t3`) | `EU_CROSS` (`iv&&hq&&!rr`) | verified plants not reporting, sorted by `ds` (days since) | registry asset | district, plant, date |
 
 ### Page 5 — Data Report (`rp4`)  *transparency / matching audit*
 

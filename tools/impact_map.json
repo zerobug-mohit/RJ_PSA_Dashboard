@@ -75,7 +75,7 @@
       "desc": "plants tab / RAW.slim_plants (matched ~448 plants, complaints JSON)",
       "files": ["Code.gs", "index.html"], "reDerive": true,
       "patterns": ["plantRows", "RAW.slim_plants", "'plants'"],
-      "affects": ["comp.ona.kpis", "comp.fc", "qr.kpis", "qr.funnel", "qr.table", "datareport"]
+      "affects": ["comp.ona.kpis", "comp.fc", "datareport"]
     },
     "tab.eu_all_plants": {
       "desc": "eu_all_plants tab / EU_ALL_PLANTS global (unique EU plants, no code)",
@@ -96,10 +96,10 @@
       "affects": ["eu.timeline", "eu.purity", "eu.intel"]
     },
     "tab.eu_cross": {
-      "desc": "eu_direct_cross tab / EU_CROSS (registry×EU×complaints)",
+      "desc": "eu_direct_cross tab / EU_CROSS (registry×EU×complaints). Also the single basis for the QR Coverage page (registry-direct reporting via re/rr/ds computed in the loader).",
       "files": ["Code.gs", "index.html"], "reDerive": true,
       "patterns": ["eu_direct_cross", "EU_CROSS", "euDirectCrossRows"],
-      "affects": ["comp.eu.kpis", "comp.eufc"]
+      "affects": ["comp.eu.kpis", "comp.eufc", "qr.kpis", "qr.funnel", "qr.table"]
     },
     "tab.ona_all_plants": {
       "desc": "ona_all_plants tab / ONA_ALL_PLANTS global",
