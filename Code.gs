@@ -645,6 +645,7 @@ function deriveDashboard() {
       euQR:     qrSuffix(String(r['QR Code'] || r['_col5'] || '')),
       es:       String(r['Equipment Status'] || r['_col4'] || '').trim(),
       ep:       (!isNaN(ep) && ep > 0) ? Math.min(ep, 100) : null,
+      epZero:   (!isNaN(ep) && ep === 0),  // raw purity recorded as 0 → plant not running (ep above is nulled for averages)
       epr:      !isNaN(hours) ? hours : null,
       el:       String(r['Any leakage observed'] || r['_col19'] || '').toLowerCase().startsWith('y'),
       ef:       String(r['Fire Safety measures in the hospital'] || r['_col17'] || '').trim(),
@@ -715,7 +716,7 @@ function deriveDashboard() {
     }
     euAllByIdent[key].drills.push(d);
   });
-  const euAllPlantsHeaders = ['district','hospital','capacity','latest_status','latest_purity','latest_hours','latest_date','eu_leakage','eu_fire_safety','drill_count'];
+  const euAllPlantsHeaders = ['district','hospital','capacity','latest_status','latest_purity','latest_hours','latest_date','eu_leakage','eu_fire_safety','drill_count','latest_not_running'];
   const euAllPlantsRows = Object.values(euAllByIdent).map(function(g) {
     var sorted = g.drills.filter(function(d){ return d.date; }).sort(function(a,b){ return a.date > b.date ? -1 : 1; });
     var latest = sorted[0] || g.drills[0];
@@ -730,6 +731,7 @@ function deriveDashboard() {
       latest ? String(latest.el) : '',
       latest ? latest.ef  : '',
       g.drills.length,
+      latest && latest.epZero ? 'true' : 'false',  // latest drill recorded purity 0 → not running
     ];
   });
   Logger.log('EU all-plants: ' + euAllPlantsRows.length + ' unique identities');

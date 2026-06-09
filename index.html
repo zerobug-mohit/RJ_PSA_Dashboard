@@ -1114,6 +1114,8 @@ async function loadDashboard() {
         el:   isTruthy(r.eu_leakage),
         ef:   r.eu_fire_safety || '',
         cnt:  +r.drill_count || 0,
+        nr:   isTruthy(r.latest_not_running),  // latest drill recorded purity 0 → not running
+
         // Safe defaults for fields not available for unmatched plants
         c: null, dept: '', ct: 0, ha: false, cl: [], hq: false, iv: false,
       };
@@ -2984,7 +2986,7 @@ function rp2(){
   const euNFR  = euAll.filter(function(p){ return p.es==='Non Functional Repairable'; });
   const euNF   = euInc.length + euNFR.length;
   const euGP   = euAll.filter(function(p){ return p.ep != null && p.ep >= 93; });
-  const euNR   = euAll.filter(function(p){ return p.ep === 0 || (p.epr === 0 && p.ep === 0); });
+  const euNR   = euAll.filter(function(p){ return p.nr; });  // latest drill purity = 0 (not running); ep is nulled for averages so use the explicit flag
 
   // Record counts for this filtered view
   const euAllRecords = euAll.reduce(function(s,p){ return s + (p.cnt||0); }, 0);
